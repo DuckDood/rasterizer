@@ -1,0 +1,11 @@
+cdir obj/
+cdir build/
+
+adddir obj/
+adddir build/
+
+dep SDL3
+
+include main.cpp
+
+build raster
