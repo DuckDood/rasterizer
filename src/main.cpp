@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <fstream>
 #define SCR_HEIGHT 480
 #define SCR_WIDTH 640
 // yeah its from sebastian lague
@@ -14,9 +15,9 @@
 
 class float3{
 	public:
-	float x;
-	float y;
-	float z;
+	float x = 0;
+	float y = 0;
+	float z = 0;
 	float3 operator*(float b) {
 		return float3(this->x * b, this->y * b, this->z * b);
 	}
@@ -116,6 +117,7 @@ class Model {
 	float pitch = 0;
 	float yaw = 0;
 	float roll = 0;
+	float3 position;
 	//std::vector<std::vector<float3>> faces;
 	std::vector<float3> triPoints;
 	float3 TransformVector(float3 ihat, float3 khat, float3 jhat, float3 v) {
@@ -141,13 +143,13 @@ class Model {
 	float3 ToWorldPoint(float3 p) {
 		std::tuple< float3, float3, float3> ihjhkh =  GetBasisVectors();
 		auto [ihat, jhat, khat] = ihjhkh;
-		return TransformVector(ihat, jhat, khat, p);
+		return TransformVector(ihat, jhat, khat, p) + position;
 	}
 
-	float2 VertexToScreen(float3 vertex, float2 numPixels) {
+	float2 VertexToScreen(float3 vertex, float2 numPixels, float fov = 1.57) {
 		float3 vertex_world = ToWorldPoint(vertex);
-		int screenHeight_world = 5;
-		float pixelsPerWorldUnit = numPixels.y/screenHeight_world;
+		int screenHeight_world = std::tan(fov/2) * 2;
+		float pixelsPerWorldUnit = numPixels.y/screenHeight_world / vertex_world.z;
 
 		float2 pixelOffset = float2(vertex_world.x * pixelsPerWorldUnit, vertex_world.y * pixelsPerWorldUnit);
 		return float2(numPixels.x /2 + pixelOffset.x, numPixels.y/2 + pixelOffset.y);
@@ -227,127 +229,14 @@ int main() {
 	int pitch;
 	std::vector<float2> currentFace;
 	Model m;
-	std::vector<float3> triPoints = m.LoadObjFile("\
-			# Blender 4.5.2 LTS\n\
-# www.blender.org\n\
-mtllib bevel.mtl\n\
-o Cube\n\
-v 0.568232 0.568232 -1.000000\n\
-v 0.568232 1.000000 -0.568232\n\
-v 1.000000 0.568232 -0.568232\n\
-v 0.568232 -1.000000 -0.568232\n\
-v 0.568232 -0.568232 -1.000000\n\
-v 1.000000 -0.568232 -0.568232\n\
-v 1.000000 0.568232 0.568232\n\
-v 0.568232 1.000000 0.568232\n\
-v 0.568232 0.568232 1.000000\n\
-v 1.000000 -0.568232 0.568232\n\
-v 0.568232 -0.568232 1.000000\n\
-v 0.568232 -1.000000 0.568232\n\
-v -0.568232 0.568232 -1.000000\n\
-v -1.000000 0.568232 -0.568232\n\
-v -0.568232 1.000000 -0.568232\n\
-v -1.000000 -0.568232 -0.568232\n\
-v -0.568232 -0.568232 -1.000000\n\
-v -0.568232 -1.000000 -0.568232\n\
-v -1.000000 0.568232 0.568232\n\
-v -0.568232 0.568232 1.000000\n\
-v -0.568232 1.000000 0.568232\n\
-v -0.568232 -1.000000 0.568232\n\
-v -0.568232 -0.568232 1.000000\n\
-v -1.000000 -0.568232 0.568232\n\
-vn 0.5774 0.5774 -0.5774\n\
-vn 0.5774 -0.5774 -0.5774\n\
-vn 0.5774 0.5774 0.5774\n\
-vn 0.5774 -0.5774 0.5774\n\
-vn -0.5774 0.5774 -0.5774\n\
-vn -0.5774 -0.5774 -0.5774\n\
-vn -0.5774 0.5774 0.5774\n\
-vn -0.5774 -0.5774 0.5774\n\
-vn -0.7071 -0.7071 -0.0000\n\
-vn -0.0000 -0.7071 -0.7071\n\
-vn 0.7071 -0.0000 -0.7071\n\
-vn -0.7071 -0.0000 0.7071\n\
-vn 0.7071 -0.0000 0.7071\n\
-vn -0.7071 -0.0000 -0.7071\n\
-vn -0.0000 0.7071 0.7071\n\
-vn 0.7071 0.7071 -0.0000\n\
-vn -0.0000 -0.7071 0.7071\n\
-vn -0.7071 0.7071 -0.0000\n\
-vn -0.0000 0.7071 -0.7071\n\
-vn 0.7071 -0.7071 -0.0000\n\
-vn -0.0000 -0.0000 -1.0000\n\
-vn 1.0000 -0.0000 -0.0000\n\
-vn -0.0000 1.0000 -0.0000\n\
-vn -0.0000 -1.0000 -0.0000\n\
-vn -0.0000 -0.0000 1.0000\n\
-vn -1.0000 -0.0000 -0.0000\n\
-vt 0.571029 0.446029\n\
-vt 0.662720 0.521470\n\
-vt 0.571029 0.550904\n\
-vt 0.321029 0.553971\n\
-vt 0.396470 0.462280\n\
-vt 0.425904 0.553971\n\
-vt 0.571029 0.699096\n\
-vt 0.662720 0.728530\n\
-vt 0.571029 0.803971\n\
-vt 0.425904 0.696029\n\
-vt 0.396470 0.787720\n\
-vt 0.321029 0.696029\n\
-vt 0.571029 0.300904\n\
-vt 0.571029 0.196029\n\
-vt 0.625000 0.244376\n\
-vt 0.125000 0.553971\n\
-vt 0.178971 0.500000\n\
-vt 0.178971 0.553971\n\
-vt 0.571029 0.053971\n\
-vt 0.571029 0.000000\n\
-vt 0.625000 0.053971\n\
-vt 0.178971 0.696029\n\
-vt 0.178971 0.750000\n\
-vt 0.125000 0.696029\n\
-vt 0.428971 0.000000\n\
-vt 0.428971 0.053971\n\
-vt 0.428971 0.303971\n\
-vt 0.428971 0.196029\n\
-vt 0.625000 0.946029\n\
-vt 0.571029 0.946029\n\
-vt 0.821029 0.553971\n\
-vt 0.821029 0.696029\n\
-vt 0.428971 0.946029\n\
-s 0\n\
-usemtl Material\n\
-f 1/1/1 2/2/1 3/3/1\n\
-f 4/4/2 5/5/2 6/6/2\n\
-f 7/7/3 8/8/3 9/9/3\n\
-f 10/10/4 11/11/4 12/12/4\n\
-f 13/13/5 14/14/5 15/15/5\n\
-f 16/16/6 17/17/6 18/18/6\n\
-f 19/19/7 20/20/7 21/21/7\n\
-f 22/22/8 23/23/8 24/24/8\n\
-f 18/18/9 22/22/9 24/24/9 16/16/9\n\
-f 4/4/10 18/18/10 17/17/10 5/5/10\n\
-f 3/3/11 6/6/11 5/5/11 1/1/11\n\
-f 23/25/12 20/20/12 19/19/12 24/26/12\n\
-f 9/9/13 11/11/13 10/10/13 7/7/13\n\
-f 13/13/14 17/27/14 16/28/14 14/14/14\n\
-f 8/8/15 21/29/15 20/30/15 9/9/15\n\
-f 2/2/16 8/8/16 7/7/16 3/3/16\n\
-f 22/22/17 12/12/17 11/11/17 23/23/17\n\
-f 21/21/18 15/15/18 14/14/18 19/19/18\n\
-f 15/15/19 2/2/19 1/1/19 13/13/19\n\
-f 12/12/20 4/4/20 6/6/20 10/10/20\n\
-f 17/27/21 13/13/21 1/1/21 5/5/21\n\
-f 6/6/22 3/3/22 7/7/22 10/10/22\n\
-f 2/2/23 15/31/23 21/32/23 8/8/23\n\
-f 18/18/24 4/4/24 12/12/24 22/22/24\n\
-f 11/11/25 9/9/25 20/30/25 23/33/25\n\
-f 24/26/26 19/19/26 14/14/26 16/28/26\n\
-\n\
-				");
+	m.position.z = -10;
+	std::string objstr = "";
+	std::ifstream objfile("suzanne.obj");
+	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
+	m.triPoints = m.LoadObjFile(objstr);
 
 	std::vector<float3> col;
-	for(int i = 0; i<triPoints.size()/3; i++) {
+	for(int i = 0; i<m.triPoints.size()/3; i++) {
 		col.push_back({
 				randomFloat(),
 				randomFloat(),
@@ -356,8 +245,21 @@ f 24/26/26 19/19/26 14/14/26 16/28/26\n\
 	}
 
 	int frameCount = 0;
-		int s = triPoints.size();
-		float2 screen = float2(SCR_WIDTH, SCR_HEIGHT);
+	int s = m.triPoints.size();
+	float2 screen = float2(SCR_WIDTH, SCR_HEIGHT);
+	enum keys{
+		W = 0,
+		A = 1,
+		S = 2,
+		D = 3,
+		UP = 4,
+		DOWN = 5,
+		LEFT = 6,
+		RIGHT = 7,
+		COMMA = 8,
+		PERIOD = 9
+	};
+	bool keyDown[10] = {false,false,false,false,false,false,false,false,false,false,};
 	while(running) {
 		frameCount++;
 		while(SDL_PollEvent(&event)) {
@@ -369,16 +271,71 @@ f 24/26/26 19/19/26 14/14/26 16/28/26\n\
 				case SDL_EVENT_KEY_DOWN:
 					switch(event.key.scancode) {
 						case SDL_SCANCODE_D:
-							m.yaw-=0.1;
+							keyDown[D] = true;
 							break;
 						case SDL_SCANCODE_A:
-							m.yaw+=0.1;
+							keyDown[A] = true;
 							break;
 						case SDL_SCANCODE_W:
-							m.pitch-=0.1;
+							keyDown[W] = true;
 							break;
 						case SDL_SCANCODE_S:
-							m.pitch+=0.1;
+							keyDown[S] = true;
+							break;
+						case SDL_SCANCODE_UP:
+							keyDown[UP] = true;
+							break;
+						case SDL_SCANCODE_DOWN:
+							keyDown[DOWN] = true;
+							break;
+						case SDL_SCANCODE_LEFT:
+							keyDown[LEFT] = true;
+							break;
+						case SDL_SCANCODE_RIGHT:
+							keyDown[RIGHT] = true;
+							break;
+						case SDL_SCANCODE_COMMA:
+							keyDown[COMMA] = true;
+							break;
+						case SDL_SCANCODE_PERIOD:
+							keyDown[PERIOD] = true;
+							break;
+						default:
+							break;
+						
+					}
+					break;
+				case SDL_EVENT_KEY_UP:
+					switch(event.key.scancode) {
+						case SDL_SCANCODE_D:
+							keyDown[D] = false;
+							break;
+						case SDL_SCANCODE_A:
+							keyDown[A] = false;
+							break;
+						case SDL_SCANCODE_W:
+							keyDown[W] = false;
+							break;
+						case SDL_SCANCODE_S:
+							keyDown[S] = false;
+							break;
+						case SDL_SCANCODE_UP:
+							keyDown[UP] = false;
+							break;
+						case SDL_SCANCODE_DOWN:
+							keyDown[DOWN] = false;
+							break;
+						case SDL_SCANCODE_LEFT:
+							keyDown[LEFT] = false;
+							break;
+						case SDL_SCANCODE_RIGHT:
+							keyDown[RIGHT] = false;
+							break;
+						case SDL_SCANCODE_COMMA:
+							keyDown[COMMA] = false;
+							break;
+						case SDL_SCANCODE_PERIOD:
+							keyDown[PERIOD] = false;
 							break;
 						default:
 							break;
@@ -387,6 +344,36 @@ f 24/26/26 19/19/26 14/14/26 16/28/26\n\
 					break;
 			}
 
+		}
+		if(keyDown[D]) {
+			m.yaw+=0.02;
+		}
+		if(keyDown[A]) {
+			m.yaw-=0.02;
+		}
+		if(keyDown[W]) {
+			m.pitch-=0.02;
+		}
+		if(keyDown[S]) {
+			m.pitch+=0.02;
+		}
+		if(keyDown[UP]) {
+			m.position.y-=0.02;
+		}
+		if(keyDown[DOWN]) {
+			m.position.y+=0.02;
+		}
+		if(keyDown[LEFT]) {
+			m.position.x+=0.02;
+		}
+		if(keyDown[RIGHT]) {
+			m.position.x-=0.02;
+		}
+		if(keyDown[COMMA]) {
+			m.position.z+=0.02;
+		}
+		if(keyDown[PERIOD]) {
+			m.position.z-=0.02;
 		}
 		SDL_Log("%d", frameCount);
 		SDL_RenderClear(renderer);
@@ -404,13 +391,13 @@ f 24/26/26 19/19/26 14/14/26 16/28/26\n\
 		for(int i = 0; i<s; i+=3) {
 
 			//currentFace = tris.at(i);
-			float minX = fmin(fmin(m.VertexToScreen(triPoints[i], screen).x,m.VertexToScreen(triPoints[i+1], screen).x),m.VertexToScreen(triPoints[i+2], screen).x);
-			float minY = fmin(fmin(m.VertexToScreen(triPoints[i], screen).y,m.VertexToScreen(triPoints[i+1], screen).y),m.VertexToScreen(triPoints[i+2], screen).y);
-			float maxX = fmax(fmax(m.VertexToScreen(triPoints[i], screen).x,m.VertexToScreen(triPoints[i+1], screen).x),m.VertexToScreen(triPoints[i+2], screen).x);
-			float maxY = fmax(fmax(m.VertexToScreen(triPoints[i], screen).y,m.VertexToScreen(triPoints[i+1], screen).y),m.VertexToScreen(triPoints[i+2], screen).y);
+			float minX = fmin(fmin(m.VertexToScreen(m.triPoints[i], screen).x,m.VertexToScreen(m.triPoints[i+1], screen).x),m.VertexToScreen(m.triPoints[i+2], screen).x);
+			float minY = fmin(fmin(m.VertexToScreen(m.triPoints[i], screen).y,m.VertexToScreen(m.triPoints[i+1], screen).y),m.VertexToScreen(m.triPoints[i+2], screen).y);
+			float maxX = fmax(fmax(m.VertexToScreen(m.triPoints[i], screen).x,m.VertexToScreen(m.triPoints[i+1], screen).x),m.VertexToScreen(m.triPoints[i+2], screen).x);
+			float maxY = fmax(fmax(m.VertexToScreen(m.triPoints[i], screen).y,m.VertexToScreen(m.triPoints[i+1], screen).y),m.VertexToScreen(m.triPoints[i+2], screen).y);
 			for(unsigned int y = minY; y<maxY; y++) {
 				for(unsigned int x = minX; x<maxX; x++) {
-					if(PointInTriangle(m.VertexToScreen(triPoints[i], screen), m.VertexToScreen(triPoints[i+1], screen), m.VertexToScreen(triPoints[i+2], screen), float2(x,y))) {
+					if(PointInTriangle(m.VertexToScreen(m.triPoints[i], screen), m.VertexToScreen(m.triPoints[i+1], screen), m.VertexToScreen(m.triPoints[i+2], screen), float2(x,y))) {
 						pixels[y*SCR_WIDTH + x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
 					}
 				}
