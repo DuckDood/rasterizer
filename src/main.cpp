@@ -7,31 +7,14 @@
 #include <vector>
 #include <sstream>
 #include <fstream>
-#define SCR_HEIGHT 480
-#define SCR_WIDTH 640
+//#define SCR_HEIGHT 480
+//#define SCR_WIDTH 640
+#define SCR_HEIGHT 720
+#define SCR_WIDTH 1280
 // yeah its from sebastian lague
 // but worse in every way
 
 
-class float3{
-	public:
-	float x = 0;
-	float y = 0;
-	float z = 0;
-	float3 operator*(float b) {
-		return float3(this->x * b, this->y * b, this->z * b);
-	}
-	float3 operator+(float3 b) {
-		return float3(this->x + b.x, this->y + b.y, this->z + b.z);
-	}
-	float3(float x, float y, float z) {
-		this->x = x;
-		this->y = y;
-		this->z = z;
-	}
-	float3() {
-	}
-};
 
 class float2{
 	public:
@@ -53,31 +36,75 @@ class float2{
 	float2() {
 	}
 };
+class float3{
+	public:
+	float x = 0;
+	float y = 0;
+	float z = 0;
+	operator float2() const {
+		return float2(this->x, this->y);
+	}
+	float3 operator*(float b) {
+		return float3(this->x * b, this->y * b, this->z * b);
+	}
+	float3 operator+(float3 b) {
+		return float3(this->x + b.x, this->y + b.y, this->z + b.z);
+	}
+	float3(float x, float y, float z) {
+		this->x = x;
+		this->y = y;
+		this->z = z;
+	}
+	float3() {
+	}
+};
 
 
 
 float Dot(float2 a, float2 b) {
 	return a.x*b.x + a.y*b.y;
 } 
+float Dot3(float3 a, float3 b) {
+	return a.x*b.x + a.y*b.y + a.z * b.z;
+} 
 float2 Perpendicular(float2 a) {
 	return float2(a.y, -a.x);
 } 
 
-bool PointOnRightSideOfLine(float2 x, float2 y, float2 p) {
+/*bool PointOnRightSideOfLine(float2 x, float2 y, float2 p) {
 	//float2 a(p.x-x.x, p.y-x.y);
 	float2 a = p-x;
 	//float2 perp = Perpendicular(float2(p.x-y.x, p.y - y.y));
 	float2 perp = Perpendicular(p-y);
 	return Dot(a, perp) >= 0;
+}*/
+
+float SignedTriangleArea(float2 a, float2 b, float2 c) {
+	float2 ac = c - a;
+	float2 abPerp = Perpendicular(b-a);
+	return Dot(ac, abPerp) / 2;
+
 }
 
 
-bool PointInTriangle(float2 a, float2 b, float2 c, float2 p) {
-	bool sideAB = PointOnRightSideOfLine(a,b,p);	
+bool PointInTriangle(float2 a, float2 b, float2 c, float2 p, float3& weights) {
+	/*bool sideAB = PointOnRightSideOfLine(a,b,p);	
 	bool sideBC = PointOnRightSideOfLine(b,c,p);		
-	bool sideCA = PointOnRightSideOfLine(c,a,p);	
+	bool sideCA = PointOnRightSideOfLine(c,a,p);	*/
+	float areaABP = SignedTriangleArea(a,b,p);
+	float areaBCP = SignedTriangleArea(b,c,p);
+	float areaCAP = SignedTriangleArea(c,a,p);
+
+	bool inTri = areaABP >= 0 && areaBCP >= 0 && areaCAP >= 0;
+
+	float invAreaSum = 1 / (areaABP + areaBCP + areaCAP);
+	float weightA = areaBCP * invAreaSum;
+	float weightB = areaCAP * invAreaSum;
+	float weightC = areaABP * invAreaSum;
+	weights = float3(weightA, weightB, weightC);
 	//return sideAB == sideBC && sideBC == sideCA;
-	return sideAB && sideBC && sideCA;
+	//return sideAB && sideBC && sideCA;
+	return inTri;
 }
 
 bool inTriBounds(float2 a, float2 b, float2 c, float2 p) {
@@ -146,13 +173,13 @@ class Model {
 		return TransformVector(ihat, jhat, khat, p) + position;
 	}
 
-	float2 VertexToScreen(float3 vertex, float2 numPixels, float fov = 1.57) {
+	float3 VertexToScreen(float3 vertex, float2 numPixels, float fov = 1) {
 		float3 vertex_world = ToWorldPoint(vertex);
 		int screenHeight_world = std::tan(fov/2) * 2;
 		float pixelsPerWorldUnit = numPixels.y/screenHeight_world / vertex_world.z;
 
 		float2 pixelOffset = float2(vertex_world.x * pixelsPerWorldUnit, vertex_world.y * pixelsPerWorldUnit);
-		return float2(numPixels.x /2 + pixelOffset.x, numPixels.y/2 + pixelOffset.y);
+		return float3(numPixels.x /2 + pixelOffset.x, numPixels.y/2 + pixelOffset.y, vertex_world.z);
 	}
 
 	std::vector<float3> LoadObjFile(std::string obj) {
@@ -229,11 +256,16 @@ int main() {
 	int pitch;
 	std::vector<float2> currentFace;
 	Model m;
-	m.position.z = -10;
+	Model objLoader;
+	//Model c;
+
+
+	//std::vector<Model> models;
+	m.position.z = 10;
 	std::string objstr = "";
-	std::ifstream objfile("suzanne.obj");
+	std::ifstream objfile("cube.obj");
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
-	m.triPoints = m.LoadObjFile(objstr);
+	m.triPoints = objLoader.LoadObjFile(objstr);
 
 	std::vector<float3> col;
 	for(int i = 0; i<m.triPoints.size()/3; i++) {
@@ -247,6 +279,7 @@ int main() {
 	int frameCount = 0;
 	int s = m.triPoints.size();
 	float2 screen = float2(SCR_WIDTH, SCR_HEIGHT);
+	float depthBuffer[SCR_WIDTH * SCR_HEIGHT];
 	enum keys{
 		W = 0,
 		A = 1,
@@ -358,22 +391,22 @@ int main() {
 			m.pitch+=0.02;
 		}
 		if(keyDown[UP]) {
-			m.position.y-=0.02;
+			m.position.y-=0.2;
 		}
 		if(keyDown[DOWN]) {
-			m.position.y+=0.02;
+			m.position.y+=0.2;
 		}
 		if(keyDown[LEFT]) {
-			m.position.x+=0.02;
+			m.position.x+=0.2;
 		}
 		if(keyDown[RIGHT]) {
-			m.position.x-=0.02;
+			m.position.x-=0.2;
 		}
 		if(keyDown[COMMA]) {
-			m.position.z+=0.02;
+			m.position.z+=0.2;
 		}
 		if(keyDown[PERIOD]) {
-			m.position.z-=0.02;
+			m.position.z-=0.2;
 		}
 		SDL_Log("%d", frameCount);
 		SDL_RenderClear(renderer);
@@ -384,25 +417,44 @@ int main() {
 		for(unsigned int y = 0; y<SCR_HEIGHT; y++) {
 			for(unsigned int x = 0; x<SCR_WIDTH; x++) {
 				pixels[y*SCR_WIDTH + x] = RGBToBin(0, 0, 0);
+				depthBuffer[y*SCR_WIDTH + x] = std::numeric_limits<double>::infinity();
 			}
 		}
+		
 
 		#pragma omp parallel for
 		for(int i = 0; i<s; i+=3) {
+			float3 point1 = m.VertexToScreen(m.triPoints.at(i), screen);
+			float3 point2 = m.VertexToScreen(m.triPoints.at(i+1), screen);
+			float3 point3 = m.VertexToScreen(m.triPoints.at(i+2), screen);
 
 			//currentFace = tris.at(i);
-			float minX = fmin(fmin(m.VertexToScreen(m.triPoints[i], screen).x,m.VertexToScreen(m.triPoints[i+1], screen).x),m.VertexToScreen(m.triPoints[i+2], screen).x);
-			float minY = fmin(fmin(m.VertexToScreen(m.triPoints[i], screen).y,m.VertexToScreen(m.triPoints[i+1], screen).y),m.VertexToScreen(m.triPoints[i+2], screen).y);
-			float maxX = fmax(fmax(m.VertexToScreen(m.triPoints[i], screen).x,m.VertexToScreen(m.triPoints[i+1], screen).x),m.VertexToScreen(m.triPoints[i+2], screen).x);
-			float maxY = fmax(fmax(m.VertexToScreen(m.triPoints[i], screen).y,m.VertexToScreen(m.triPoints[i+1], screen).y),m.VertexToScreen(m.triPoints[i+2], screen).y);
+			float minX = fmin(fmin(point1.x,point2.x),point3.x);
+			float minY = fmin(fmin(point1.y,point2.y),point3.y);
+			float maxX = fmax(fmax(point1.x,point2.x),point3.x);
+			float maxY = fmax(fmax(point1.y,point2.y),point3.y);
+
+			maxX = fmin(maxX, SCR_WIDTH);
+			minX = fmax(minX, 0);
+
+			maxY = fmin(maxY, SCR_HEIGHT);
+			minY = fmax(minY, 0);
 			for(unsigned int y = minY; y<maxY; y++) {
 				for(unsigned int x = minX; x<maxX; x++) {
-					if(PointInTriangle(m.VertexToScreen(m.triPoints[i], screen), m.VertexToScreen(m.triPoints[i+1], screen), m.VertexToScreen(m.triPoints[i+2], screen), float2(x,y))) {
-						pixels[y*SCR_WIDTH + x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
+					float3 weights;
+					if(PointInTriangle(point1, point2, point3, float2(x,y), weights)) {
+						float3 depths = float3(point1.z, point2.z, point3.z);
+						float depth = Dot3(depths, weights);
+						if(depth > depthBuffer[(y)*SCR_WIDTH + x]) continue;
+						//pixels[(y)*SCR_WIDTH + x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
+						pixels[(y)*SCR_WIDTH + x] = RGBToBin(255-depth*30, 255-depth*30, 255-depth*30);
+						depthBuffer[(y)*SCR_WIDTH + x] = depth;
 					}
 				}
 			}
 		}
+
+
 		/*for(unsigned int y = 0; y<SCR_HEIGHT; y++) {
 			for(unsigned int x = 0; x<SCR_WIDTH; x++) {
 				//tempC += (123 >> 16); 
@@ -421,7 +473,8 @@ int main() {
 			}
 		}*/
 		SDL_UnlockTexture(screenTex);
-		SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 0, NULL, SDL_FLIP_VERTICAL);
+		//SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 0, NULL, SDL_FLIP_VERTICAL);
+		SDL_RenderTexture(renderer, screenTex, NULL,NULL);
 		SDL_RenderPresent(renderer);
 	}
 	SDL_DestroyRenderer(renderer);
