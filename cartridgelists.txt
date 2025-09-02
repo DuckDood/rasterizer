@@ -6,7 +6,7 @@ adddir build/
 
 dep SDL3
 
-incflag -O3
+incflag -O2
 O3 makes it a lot faster, but i dont trust it
 include main.cpp
 

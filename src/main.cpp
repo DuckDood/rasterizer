@@ -7,10 +7,11 @@
 #include <vector>
 #include <sstream>
 #include <fstream>
-//#define SCR_HEIGHT 480
-//#define SCR_WIDTH 640
-#define SCR_HEIGHT 720
-#define SCR_WIDTH 1280
+#define SCR_HEIGHT 480
+#define SCR_WIDTH 640
+//#define toRadians(x) x/360*3.1415
+//#define SCR_HEIGHT 720
+//#define SCR_WIDTH 1280
 // yeah its from sebastian lague
 // but worse in every way
 
@@ -47,8 +48,17 @@ class float3{
 	float3 operator*(float b) {
 		return float3(this->x * b, this->y * b, this->z * b);
 	}
+	float3 operator/(float b) {
+		return float3(this->x / b, this->y / b, this->z / b);
+	}
 	float3 operator+(float3 b) {
 		return float3(this->x + b.x, this->y + b.y, this->z + b.z);
+	}
+	/*void operator+=(float3 b) {
+		*this = *this + b;
+	}*/
+	float3 operator-(float3 b) {
+		return float3(this->x - b.x, this->y - b.y, this->z - b.z);
 	}
 	float3(float x, float y, float z) {
 		this->x = x;
@@ -85,6 +95,7 @@ float SignedTriangleArea(float2 a, float2 b, float2 c) {
 	return Dot(ac, abPerp) / 2;
 
 }
+		
 
 
 bool PointInTriangle(float2 a, float2 b, float2 c, float2 p, float3& weights) {
@@ -95,16 +106,18 @@ bool PointInTriangle(float2 a, float2 b, float2 c, float2 p, float3& weights) {
 	float areaBCP = SignedTriangleArea(b,c,p);
 	float areaCAP = SignedTriangleArea(c,a,p);
 
-	bool inTri = areaABP >= 0 && areaBCP >= 0 && areaCAP >= 0;
+	bool inTri = (areaABP >= 0) && (areaBCP >= 0) && (areaCAP >= 0);
 
-	float invAreaSum = 1 / (areaABP + areaBCP + areaCAP);
+	float totalArea = areaABP + areaBCP + areaCAP;
+
+	float invAreaSum = 1 / totalArea;
 	float weightA = areaBCP * invAreaSum;
 	float weightB = areaCAP * invAreaSum;
 	float weightC = areaABP * invAreaSum;
 	weights = float3(weightA, weightB, weightC);
 	//return sideAB == sideBC && sideBC == sideCA;
 	//return sideAB && sideBC && sideCA;
-	return inTri;
+	return inTri && totalArea > 0;
 }
 
 bool inTriBounds(float2 a, float2 b, float2 c, float2 p) {
@@ -131,22 +144,15 @@ float randomFloat() {
 	return rand() % 255;
 }
 
-class Camera {
-	float pitch;
-	float yaw;
-	float roll;
-
-	float3 position;
-};
-
-class Model {
+class Transform {
 	public:
 	float pitch = 0;
 	float yaw = 0;
 	float roll = 0;
-	float3 position;
+	float3 position = {0,0,0};
+	float3 center = {0,0,0};
 	//std::vector<std::vector<float3>> faces;
-	std::vector<float3> triPoints;
+	//std::vector<float3> triPoints;
 	float3 TransformVector(float3 ihat, float3 khat, float3 jhat, float3 v) {
 		return ihat * v.x + jhat * v.y + khat * v.z;
 	}
@@ -160,20 +166,38 @@ class Model {
 		float3 jhat_pitch = float3(0, std::cos(pitch), -std::sin(pitch));
 		float3 khat_pitch = float3(0, std::sin(pitch), std::cos(pitch));
 
-		float3 ihat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, ihat_pitch);
-		float3 jhat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, jhat_pitch);
-		float3 khat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, khat_pitch);
+		float3 ihat_roll = float3(std::cos(roll), std::sin(roll), 0);
+		float3 jhat_roll = float3(-std::sin(roll), std::cos(roll), 0);
+		float3 khat_roll = float3(0, 0, 1);
+
+		float3 ihat_py = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, ihat_pitch);
+		float3 jhat_py = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, jhat_pitch);
+		float3 khat_py = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, khat_pitch);
+
+		//float3 ihat = TransformVector(ihat_py, jhat_py, khat_py, ihat_roll);
+		//float3 jhat = TransformVector(ihat_py, jhat_py, khat_py, jhat_roll);
+		//float3 khat = TransformVector(ihat_py, jhat_py, khat_py, khat_roll);
+		float3 ihat = ihat_py;
+		float3 jhat = jhat_py;
+		float3 khat = khat_py;
 
 		return {ihat, jhat, khat};
 	}
-
-	float3 ToWorldPoint(float3 p) {
-		std::tuple< float3, float3, float3> ihjhkh =  GetBasisVectors();
-		auto [ihat, jhat, khat] = ihjhkh;
-		return TransformVector(ihat, jhat, khat, p) + position;
+	std::tuple<float3, float3, float3> GetInverseBasisVectors() {
+		auto [ihat, jhat, khat] = GetBasisVectors();
+		float3 ihat_inverse = float3(ihat.x, jhat.x, khat.x);
+		float3 jhat_inverse = float3(ihat.y, jhat.y, khat.y);
+		float3 khat_inverse = float3(ihat.z, jhat.z, khat.z);
+		return {ihat_inverse, jhat_inverse, khat_inverse};
 	}
 
-	float3 VertexToScreen(float3 vertex, float2 numPixels, float fov = 1) {
+	float3 ToWorldPoint(float3 p) {
+		auto [ihat, jhat, khat] = GetBasisVectors();
+		return TransformVector(ihat, jhat, khat, p + center) + position;
+	}
+
+
+	/*float3 VertexToScreen(float3 vertex, float2 numPixels, float fov = 1) {
 		float3 vertex_world = ToWorldPoint(vertex);
 		int screenHeight_world = std::tan(fov/2) * 2;
 		float pixelsPerWorldUnit = numPixels.y/screenHeight_world / vertex_world.z;
@@ -231,8 +255,180 @@ class Model {
 			}
 		} 
 		return triPoints;
+	}*/
+};
+
+class Camera : public Transform {
+	public: 
+	float fov;
+	float3 ToLocalPoint(float3 worldPoint) {
+		pitch += 1.5708;
+		auto [ihat, jhat, khat] = GetInverseBasisVectors();
+		pitch -= 1.5708;
+		return TransformVector(ihat, jhat, khat, worldPoint - position);
 	}
 };
+
+class Model : public Transform {
+	public:
+	//float pitch = 0;
+	//float yaw = 0;
+	//float roll = 0;
+	//float3 position;
+	//std::vector<std::vector<float3>> faces;
+	std::vector<float3> triPoints;
+	/*float3 TransformVector(float3 ihat, float3 khat, float3 jhat, float3 v) {
+		return ihat * v.x + jhat * v.y + khat * v.z;
+	}
+
+	std::tuple<float3, float3, float3> GetBasisVectors() {
+		float3 ihat_yaw = float3(std::cos(yaw), 0, std::sin(yaw));
+		float3 jhat_yaw = float3(0, 1, 0);
+		float3 khat_yaw = float3(-std::sin(yaw), 0, std::cos(yaw));
+
+		float3 ihat_pitch = float3(1, 0, 0);
+		float3 jhat_pitch = float3(0, std::cos(pitch), -std::sin(pitch));
+		float3 khat_pitch = float3(0, std::sin(pitch), std::cos(pitch));
+		
+
+		float3 ihat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, ihat_pitch);
+		float3 jhat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, jhat_pitch);
+		float3 khat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, khat_pitch);
+
+		return {ihat, jhat, khat};
+	}
+
+	float3 ToWorldPoint(float3 p) {
+		std::tuple< float3, float3, float3> ihjhkh =  GetBasisVectors();
+		auto [ihat, jhat, khat] = ihjhkh;
+		return TransformVector(ihat, jhat, khat, p) + position;
+	}*/
+
+	float3 VertexToScreen(float3 vertex, float2 numPixels, Camera cam) {
+		float3 vertex_world = ToWorldPoint(vertex);
+		float3 vertex_view = cam.ToLocalPoint(vertex_world);
+		//float3 vertex_view = cam.ToWorldPoint(vertex_world);
+
+		int screenHeight_world = std::tan(cam.fov/2) * 2;
+		float pixelsPerWorldUnit = numPixels.y/screenHeight_world / vertex_view.z;
+
+		float2 pixelOffset = float2(vertex_view.x * pixelsPerWorldUnit, vertex_view.y * pixelsPerWorldUnit);
+		return float3(numPixels.x /2 + pixelOffset.x, numPixels.y/2 + pixelOffset.y, vertex_view.z);
+	}
+
+	std::vector<float3> LoadObjFile(std::string obj) {
+		std::vector<float3> allPoints;
+		std::vector<float3> triPoints;
+
+		std::stringstream lines(obj);
+		std::string line;
+
+		while(std::getline(lines, line, '\n')) {
+			if(line.length() < 2) continue;
+			if(line.substr(0, 2) == "v ") {
+				std::vector<float> axes;
+				std::stringstream words(line);
+				std::string word;
+				int i = 2;
+				while(std::getline(words, word, ' ')) {
+					if(i > 2) {
+						axes.push_back(std::stof(word));
+					}
+					i++;
+				}
+				allPoints.push_back({axes[0], axes[1], axes[2]});
+			} else
+			if(line.substr(0, 2) == "f ") {
+				std::stringstream words(line);
+				std::string word;
+				std::vector<std::string> faceIndexGroups;
+				int c = 2;
+				while(std::getline(words, word, ' ')) {
+					if(c > 2) {
+						faceIndexGroups.push_back(word);
+					}
+					c++;
+				}
+
+				for(int i = 0; i<faceIndexGroups.size(); i++) {
+					std::vector<int> indexGroup;
+					std::stringstream thisFaceGroup(faceIndexGroups[i]);
+					while(std::getline(thisFaceGroup, word, '/')) {
+						indexGroup.push_back(std::stoi(word));
+					}
+					int pointIndex = indexGroup[0]-1;
+					if(i>=3) triPoints.push_back(triPoints[triPoints.size()-(3 * i - 6)]);
+					if(i>=3) triPoints.push_back(triPoints[triPoints.size()-(2)]);
+					triPoints.push_back(allPoints[pointIndex]);
+				}
+
+			}
+		} 
+		return triPoints;
+	}
+};
+
+float Clamp(float p, float low, float high) {
+	if( p<low) {
+		return low;
+	}
+	if( p>high) {
+		return high;
+	}
+	return p;
+};
+
+float3 Normalize(float3 v)
+{
+		float sqrLength = Dot3(v, v);
+		float length = sqrt(sqrLength);
+		if (length == 0) return {0,0,0};
+		return v / length;
+}
+
+float toRadians(float x) {
+	return (x/360) * 3.1415926*2;
+};
+
+void RenderModel(Model m, int s, Camera cam, float2 screen, Uint32* pixels, float depthBuffer[], std::vector<float3> col) {
+		#pragma omp parallel for
+		for(int i = 0; i<s; i+=3) {
+			float3 point1 = m.VertexToScreen(m.triPoints.at(i), screen, cam);
+			float3 point2 = m.VertexToScreen(m.triPoints.at(i+1), screen, cam);
+			float3 point3 = m.VertexToScreen(m.triPoints.at(i+2), screen, cam);
+			if(point1.z <= 0 || point2.z <= 0 || point3.z <= 0) continue;
+
+			//currentFace = tris.at(i);
+			float minX = fmin(fmin(point1.x,point2.x),point3.x);
+			float minY = fmin(fmin(point1.y,point2.y),point3.y);
+			float maxX = fmax(fmax(point1.x,point2.x),point3.x);
+			float maxY = fmax(fmax(point1.y,point2.y),point3.y);
+
+			maxX = fmin(maxX, SCR_WIDTH);
+			minX = fmax(minX, 0);
+
+			maxY = fmin(maxY, SCR_HEIGHT);
+			minY = fmax(minY, 0);
+			float3 colSeed = m.triPoints.at(i) + m.triPoints.at(i+1) + m.triPoints.at(i+2) + m.position;
+			srand(colSeed.y + colSeed.z + colSeed.x);
+			int r = rand()%255,g = rand()%255,b=rand()%255;
+			for(unsigned int y = minY; y<maxY; y++) {
+				for(unsigned int x = minX; x<maxX; x++) {
+					float3 weights;
+					if(PointInTriangle(point1, point2, point3, float2(x,y), weights)) {
+						float3 depths = float3(point1.z, point2.z, point3.z);
+						float depth = 1/Dot3(float3(1/depths.x, 1/depths.y, 1/depths.z), weights);
+						if(depth > depthBuffer[(y)*SCR_WIDTH + x]) continue;
+						pixels[(y)*SCR_WIDTH + x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
+						//pixels[(y)*SCR_WIDTH + x] = RGBToBin(r,g,b);
+						depthBuffer[(y)*SCR_WIDTH + x] = depth;
+					}
+				}
+			}
+		}
+}
+
+
 
 int main() {
 	srand(time(0));
@@ -257,15 +453,35 @@ int main() {
 	std::vector<float2> currentFace;
 	Model m;
 	Model objLoader;
-	//Model c;
+	Camera cam;
+	cam.fov = 1;
+	Model c;
+
+	c.position.y = 10;
+	c.position.z = 2;
+	m.position.y = 10;
+	m.position.z = 2;
+	c.pitch = toRadians(90);
+	m.pitch = toRadians(90);
+	m.yaw = 3.141;
+
+	SDL_Rect mouseRect = {SCR_WIDTH/2, SCR_HEIGHT/2, 3, 3};
 
 
 	//std::vector<Model> models;
-	m.position.z = 10;
+	//m.position.z = 10;
+	//m.position.y = -10;
 	std::string objstr = "";
-	std::ifstream objfile("cube.obj");
+	std::ifstream objfile("suzanne.obj");
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
 	m.triPoints = objLoader.LoadObjFile(objstr);
+
+	objfile.close();
+
+	objstr = "";
+	objfile.open("floor.obj");
+	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
+	c.triPoints = objLoader.LoadObjFile(objstr);
 
 	std::vector<float3> col;
 	for(int i = 0; i<m.triPoints.size()/3; i++) {
@@ -275,9 +491,19 @@ int main() {
 				randomFloat()
 				});
 	}
+	std::vector<float3> col2;
+	for(int i = 0; i<c.triPoints.size()/3; i++) {
+		col2.push_back({
+				randomFloat(),
+				randomFloat(),
+				randomFloat()
+				});
+	}
+	
 
 	int frameCount = 0;
 	int s = m.triPoints.size();
+	int s2 = c.triPoints.size();
 	float2 screen = float2(SCR_WIDTH, SCR_HEIGHT);
 	float depthBuffer[SCR_WIDTH * SCR_HEIGHT];
 	enum keys{
@@ -292,9 +518,16 @@ int main() {
 		COMMA = 8,
 		PERIOD = 9
 	};
+	float2 mouseDelta = {0,0};
+	float2 usedMouseDelta = {0,0};
+	float mouseSensitivity = 1;
+	float camSpeed = 0.25;
 	bool keyDown[10] = {false,false,false,false,false,false,false,false,false,false,};
+	SDL_SetWindowRelativeMouseMode(window, true);
 	while(running) {
+
 		frameCount++;
+		//c.yaw +=0.01;
 		while(SDL_PollEvent(&event)) {
 			switch(event.type) {
 				case SDL_EVENT_QUIT:
@@ -375,10 +608,18 @@ int main() {
 						
 					}
 					break;
+
+				case SDL_EVENT_MOUSE_MOTION:
+					float2 mouseDelta(event.motion.xrel / SCR_WIDTH * mouseSensitivity, event.motion.yrel / SCR_WIDTH * mouseSensitivity);
+					cam.pitch -= Clamp(mouseDelta.y, -1.48353, 1.48353);
+					cam.yaw -=  mouseDelta.x;
+					break;
+
+
 			}
 
 		}
-		if(keyDown[D]) {
+		/*if(keyDown[D]) {
 			m.yaw+=0.02;
 		}
 		if(keyDown[A]) {
@@ -391,30 +632,84 @@ int main() {
 			m.pitch+=0.02;
 		}
 		if(keyDown[UP]) {
-			m.position.y-=0.2;
+			m.position.y-=0.02;
 		}
 		if(keyDown[DOWN]) {
-			m.position.y+=0.2;
+			m.position.y+=0.02;
 		}
 		if(keyDown[LEFT]) {
-			m.position.x+=0.2;
+			m.position.x-=0.02;
 		}
 		if(keyDown[RIGHT]) {
-			m.position.x-=0.2;
+			m.position.x+=0.02;
 		}
 		if(keyDown[COMMA]) {
-			m.position.z+=0.2;
+			m.position.z+=0.02;
 		}
 		if(keyDown[PERIOD]) {
-			m.position.z-=0.2;
+			m.position.z-=0.02;
+		}*/
+		//float up;
+		//https://stackoverflow.com/questions/10569659/camera-pitch-yaw-to-direction-vector
+
+		if(keyDown[A]) {
+			cam.position.x -= cos(cam.yaw);
+			cam.position.y -= sin(cam.yaw);
 		}
+		if(keyDown[D]) {
+			cam.position.x += cos(cam.yaw);
+			cam.position.y += sin(cam.yaw);
+		}
+		float xzlen = cos(cam.pitch);
+		float y = xzlen * cos(cam.yaw);
+		float z = -sin(cam.pitch);
+		float x = xzlen * sin(-cam.yaw);
+		//up = sin(cam.pitch);
+		//float ps = 1 - fabs(up);
+		//ps = cbrt(ps);
+		//SDL_Log("ps, %f", ps);
+		if(keyDown[W]) {
+			//cam.position.x -= sin(cam.yaw) * ps;
+			//cam.position.y += cos(cam.yaw) * ps;
+
+			//cam.position.z -= up;
+			
+			cam.position.x += x;
+			cam.position.y += y;
+			cam.position.z += z;
+		}
+		if(keyDown[S]) {
+			//cam.position.x += sin(cam.yaw) * ps;
+			//cam.position.y -= cos(cam.yaw) * ps;
+
+			//cam.position.z += up;
+			cam.position.x -= x;
+			cam.position.y -= y;
+			cam.position.z -= z;
+
+
+		}
+		if(keyDown[COMMA]) {
+			cam.fov+=toRadians(1);
+		}
+		if(keyDown[PERIOD]) {
+			cam.fov-=toRadians(1);
+		}
+		SDL_Log("%f", cam.pitch);
+
+			
+		
+
 		SDL_Log("%d", frameCount);
 		SDL_RenderClear(renderer);
+					cam.pitch = Clamp(cam.pitch, -1.5708, 1.5708);
 		//tris.clear();
 
 		SDL_LockTexture(screenTex, NULL, &pix, &pitch);
 		pixels = (Uint32*)pix;
+		#pragma omp parallel for
 		for(unsigned int y = 0; y<SCR_HEIGHT; y++) {
+			#pragma omp parallel for
 			for(unsigned int x = 0; x<SCR_WIDTH; x++) {
 				pixels[y*SCR_WIDTH + x] = RGBToBin(0, 0, 0);
 				depthBuffer[y*SCR_WIDTH + x] = std::numeric_limits<double>::infinity();
@@ -422,11 +717,48 @@ int main() {
 		}
 		
 
-		#pragma omp parallel for
-		for(int i = 0; i<s; i+=3) {
-			float3 point1 = m.VertexToScreen(m.triPoints.at(i), screen);
-			float3 point2 = m.VertexToScreen(m.triPoints.at(i+1), screen);
-			float3 point3 = m.VertexToScreen(m.triPoints.at(i+2), screen);
+		//#pragma omp parallel for
+		/*for(int i = 0; i<s; i+=3) {
+			float3 point1 = m.VertexToScreen(m.triPoints.at(i), screen, cam);
+			float3 point2 = m.VertexToScreen(m.triPoints.at(i+1), screen, cam);
+			float3 point3 = m.VertexToScreen(m.triPoints.at(i+2), screen, cam);
+			if(point1.z <= 0 || point2.z <= 0 || point3.z <= 0) continue;
+
+			//currentFace = tris.at(i);
+			float minX = fmin(fmin(point1.x,point2.x),point3.x);
+			float minY = fmin(fmin(point1.y,point2.y),point3.y);
+			float maxX = fmax(fmax(point1.x,point2.x),point3.x);
+			float maxY = fmax(fmax(point1.y,point2.y),point3.y);
+
+			maxX = fmin(maxX, SCR_WIDTH);
+			minX = fmax(minX, 0);
+
+			maxY = fmin(maxY, SCR_HEIGHT);
+			minY = fmax(minY, 0);
+			//srand(m.triPoints.at(i).x + m.triPoints.at(i+1).y + m.triPoints.at(i+2).z);
+			//int r = rand()%255,g = rand()%255,b=rand()%255;
+			for(unsigned int y = minY; y<maxY; y++) {
+				for(unsigned int x = minX; x<maxX; x++) {
+					float3 weights;
+					if(PointInTriangle(point1, point2, point3, float2(x,y), weights)) {
+						float3 depths = float3(point1.z, point2.z, point3.z);
+						float depth = 1/Dot3(float3(1/depths.x, 1/depths.y, 1/depths.z), weights);
+						if(depth > depthBuffer[(y)*SCR_WIDTH + x]) continue;
+						pixels[(y)*SCR_WIDTH + x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
+						//pixels[(y)*SCR_WIDTH + x] = RGBToBin(r,g,b);
+						depthBuffer[(y)*SCR_WIDTH + x] = depth;
+					}
+				}
+			}
+		}*/
+		RenderModel(m, s, cam, screen, pixels, depthBuffer, col);
+		RenderModel(c, s2, cam, screen, pixels, depthBuffer, col);
+		/*#pragma omp parallel for
+		for(int i = 0; i<s2; i+=3) {
+			float3 point1 = c.VertexToScreen(c.triPoints.at(i), screen, cam);
+			float3 point2 = c.VertexToScreen(c.triPoints.at(i+1), screen, cam);
+			float3 point3 = c.VertexToScreen(c.triPoints.at(i+2), screen, cam);
+			if(point1.z <= 0 || point2.z <= 0 || point3.z <= 0) continue;
 
 			//currentFace = tris.at(i);
 			float minX = fmin(fmin(point1.x,point2.x),point3.x);
@@ -444,15 +776,14 @@ int main() {
 					float3 weights;
 					if(PointInTriangle(point1, point2, point3, float2(x,y), weights)) {
 						float3 depths = float3(point1.z, point2.z, point3.z);
-						float depth = Dot3(depths, weights);
+						float depth = 1/Dot3(float3(1/depths.x, 1/depths.y, 1/depths.z), weights);
 						if(depth > depthBuffer[(y)*SCR_WIDTH + x]) continue;
-						//pixels[(y)*SCR_WIDTH + x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
-						pixels[(y)*SCR_WIDTH + x] = RGBToBin(255-depth*30, 255-depth*30, 255-depth*30);
+						pixels[(y)*SCR_WIDTH + x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
 						depthBuffer[(y)*SCR_WIDTH + x] = depth;
 					}
 				}
 			}
-		}
+		}*/
 
 
 		/*for(unsigned int y = 0; y<SCR_HEIGHT; y++) {
@@ -473,8 +804,9 @@ int main() {
 			}
 		}*/
 		SDL_UnlockTexture(screenTex);
-		//SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 0, NULL, SDL_FLIP_VERTICAL);
-		SDL_RenderTexture(renderer, screenTex, NULL,NULL);
+		SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 0, NULL, SDL_FLIP_VERTICAL);
+		SDL_SetRenderDrawColor(renderer, 255,0,0,255);
+		SDL_RenderPoint(renderer, SCR_WIDTH/2, SCR_HEIGHT/2);
 		SDL_RenderPresent(renderer);
 	}
 	SDL_DestroyRenderer(renderer);
