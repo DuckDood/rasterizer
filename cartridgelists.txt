@@ -4,10 +4,23 @@ cdir build/
 adddir obj/
 adddir build/
 
-dep SDL3
+var SDLIMG 1
+bopt SDLIMG SDLIMG
+
+#dep SDL3
+#dep SDL3_image
 
 incflag -O2
 O3 makes it a lot faster, but i dont trust it
 include main.cpp
 
-build raster
+#build raster
+make
+build/raster: obj/main.o
+ifeq (${SDLIMG},1)
+	g++ obj/main.o -lSDL3 -lSDL3_image -o build/raster
+else
+	g++ obj/main.o -lSDL3 -o build/raster
+endif
+
+end
