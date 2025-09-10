@@ -188,12 +188,12 @@ class Transform {
 		float3 jhat_py = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, jhat_pitch);
 		float3 khat_py = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, khat_pitch);
 
-		//float3 ihat = TransformVector(ihat_py, jhat_py, khat_py, ihat_roll);
-		//float3 jhat = TransformVector(ihat_py, jhat_py, khat_py, jhat_roll);
-		//float3 khat = TransformVector(ihat_py, jhat_py, khat_py, khat_roll);
-		float3 ihat = ihat_py;
-		float3 jhat = jhat_py;
-		float3 khat = khat_py;
+		float3 ihat = TransformVector(ihat_py, jhat_py, khat_py, ihat_roll);
+		float3 jhat = TransformVector(ihat_py, jhat_py, khat_py, jhat_roll);
+		float3 khat = TransformVector(ihat_py, jhat_py, khat_py, khat_roll);
+		//float3 ihat = ihat_py;
+		//float3 jhat = jhat_py;
+		//float3 khat = khat_py;
 
 		return {ihat, jhat, khat};
 	}
@@ -277,9 +277,9 @@ class Camera : public Transform {
 	public: 
 	float fov;
 	float3 ToLocalPoint(float3 worldPoint) {
-		pitch += 1.5708;
+		//pitch += 1.5708;
 		auto [ihat, jhat, khat] = GetInverseBasisVectors();
-		pitch -= 1.5708;
+		//pitch -= 1.5708;
 		return TransformVector(ihat, jhat, khat, worldPoint - position);
 	}
 };
@@ -524,7 +524,7 @@ void getSurfacePixel(SDL_Surface * surface, int x, int y, Uint8 * r, Uint8 * g, 
 }
 
 
-void RenderModel(Model m, int s, Camera cam, float2 screen, Uint32* pixels, float depthBuffer[], SDL_Surface * surface = NULL) {
+void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depthBuffer[], SDL_Surface * surface = NULL) {
 	SDL_LockSurface(surface);
 	
 		// stands for "surface real" trust
@@ -534,9 +534,10 @@ void RenderModel(Model m, int s, Camera cam, float2 screen, Uint32* pixels, floa
 				//SDL_FillSurfaceRect(surface, NULL, 0xffffffff);
 				sr = false;
 		}
+		int modelSize = m.triPoints.size();
 		#pragma omp parallel for
 		float closeTriDepth;
-		for(int i = 0; i<s; i+=3) {
+		for(int i = 0; i<modelSize; i+=3) {
 			float3 point1 = m.VertexToScreen(m.triPoints.at(i), screen, cam);
 			float3 point2 = m.VertexToScreen(m.triPoints.at(i+1), screen, cam);
 			float3 point3 = m.VertexToScreen(m.triPoints.at(i+2), screen, cam);
@@ -569,7 +570,7 @@ void RenderModel(Model m, int s, Camera cam, float2 screen, Uint32* pixels, floa
 			tridep = 1/Dot3(float3(1/point1.z, 1/point2.z, 1/point3.z), triweight);
 			closeTriDepth = fmin(closeTriDepth, tridep);
 			Uint8 r,g,b;
-			Uint8 rt,gt,bt;
+			//Uint8 rt,gt,bt;
 		#pragma omp parallel for
 			for(unsigned int y = minY; y<maxY; y++) {
 		#pragma omp parallel for
@@ -580,6 +581,17 @@ void RenderModel(Model m, int s, Camera cam, float2 screen, Uint32* pixels, floa
 						float3 depths = float3(point1.z, point2.z, point3.z);
 						float depth = 1/Dot3(float3(1/depths.x, 1/depths.y, 1/depths.z), weights);
 						if(depth > depthBuffer[(y)*SCR_WIDTH + x]) continue;
+
+						float3 normal = {0,0,0};
+						normal = normal + m.normals[i] / depths.x * weights.x;
+						normal = normal + m.normals[i+1] / depths.y * weights.y;
+						normal = normal + m.normals[i+2] /  depths.z * weights.z;
+						normal = normal * depth;
+						normal = Normalize(normal);
+						//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
+
+						float lightLevel = (1+Dot3(normal, {0,1,0}))*0.5;
+						float3 l = float3(1.5,1.5,1.5) * lightLevel;
 						
 						if(sr) {
 						float2 texCoord = {0,0};
@@ -590,6 +602,9 @@ void RenderModel(Model m, int s, Camera cam, float2 screen, Uint32* pixels, floa
 						texCoord = texCoord * depth;
 
 						SDL_ReadSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b, NULL);
+						r= fmin(255,r*l.x);
+						g= fmin(255,g*l.y);
+						b= fmin(255,b*l.z);
 						//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
 						//sampleSurface(texCoord.x, texCoord.y, surface, &r,&g,&b);
 
@@ -597,12 +612,21 @@ void RenderModel(Model m, int s, Camera cam, float2 screen, Uint32* pixels, floa
 
 						//pixels[(y)*SCR_WIDTH+ x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
 						} else {
-							float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
-							normal = normal + float3(0,0,0);
-							normal = normal * 0.5;
-							r = normal.x * 255;
-							g = normal.y * 255;
-							b = normal.z * 255;
+							//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
+							//normal = normal + float3(1,1,1);
+							//normal = normal * 0.5;
+							/*float3 normal = {0,0,0};
+						normal = normal + m.normals[i] / depths.x * weights.x;
+						normal = normal + m.normals[i+1] / depths.y * weights.y;
+						normal = normal + m.normals[i+2] /  depths.z * weights.z;
+						normal = normal * depth;
+						normal = Normalize(normal);
+						//normal = (normal + float3(1,1,1)) * 0.5;
+						float lightLevel =  (Dot3(normal, {0,0,1})+1)*0.5;
+						float3 l = float3(255,255,255) * lightLevel;*/
+						r = fmin(255,l.x*255);//normal.x*255;
+						g = fmin(255,l.y*255);//normal.y*255;
+						b = fmin(255,l.z*255);//normal.z*255;
 						}
 						pixels[(y)*SCR_WIDTH + x] = RGBToBin(r,g,b);
 						depthBuffer[(y)*SCR_WIDTH + x] = depth;
@@ -645,15 +669,14 @@ int main(int argc, char**argv) {
 	Camera cam;
 	cam.fov = 1;
 	Model m;
-	//Model c;
+	Model c;
 
-	//c.position.y = 10;
+	c.position.y = 7;
 	//c.position.z = 2;
 	m.position.y = 10;
-	m.position.z = 0;
+	m.position.z = -2.5;
 	//c.pitch = toRadians(90);
-	m.pitch = toRadians(90);
-	m.yaw = 3.141;
+	m.roll = 3.141;
 
 	SDL_Rect mouseRect = {SCR_WIDTH/2, SCR_HEIGHT/2, 3, 3};
 
@@ -662,7 +685,13 @@ int main(int argc, char**argv) {
 	//m.position.z = 10;
 	//m.position.y = -10;
 	std::string objstr = "";
-	std::ifstream objfile(argv[1]);
+	std::ifstream objfile("resources/suzanne.obj");
+	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
+	c.init(objLoader.LoadObjFile(objstr));
+	objfile.close();
+
+	objfile.open("dave.obj");
+	objstr = "";
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
 	m.init(objLoader.LoadObjFile(objstr));
 
@@ -677,6 +706,7 @@ int main(int argc, char**argv) {
 
 	int frameCount = 0;
 	int s = m.triPoints.size();
+	int s2 = c.triPoints.size();
 	float2 screen = float2(SCR_WIDTH, SCR_HEIGHT);
 	float depthBuffer[SCR_WIDTH * SCR_HEIGHT];
 	enum keys{
@@ -701,7 +731,6 @@ int main(int argc, char**argv) {
 
 	while(running) {
 	int start_time = SDL_GetTicks();
-
 		frameCount++;
 		while(SDL_PollEvent(&event)) {
 			switch(event.type) {
@@ -798,7 +827,7 @@ int main(int argc, char**argv) {
 
 				case SDL_EVENT_MOUSE_MOTION:
 					float2 mouseDelta(event.motion.xrel / SCR_WIDTH * mouseSensitivity, event.motion.yrel / SCR_WIDTH * mouseSensitivity);
-					cam.pitch -= Clamp(mouseDelta.y, -1.48353, 1.48353);
+					cam.pitch += Clamp(mouseDelta.y, -1.48353, 1.48353);
 					cam.yaw -=  mouseDelta.x;
 					break;
 
@@ -938,7 +967,8 @@ int main(int argc, char**argv) {
 				}
 			}
 		}*/
-		RenderModel(m, s, cam, screen, pixels, depthBuffer, uvtex);
+		RenderModel(m, cam, screen, pixels, depthBuffer, uvtex);
+		RenderModel(c, cam, screen, pixels, depthBuffer, NULL);
 		//RenderModel(c, s2, cam, screen, pixels, depthBuffer, col);
 		/*#pragma omp parallel for
 		for(int i = 0; i<s2; i+=3) {
