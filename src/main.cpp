@@ -15,10 +15,10 @@
 #if SDLIMG == 1
 #include <SDL3_image/SDL_image.h>
 #endif
-#define SCR_HEIGHT 720
-#define SCR_WIDTH 1280
-//#define SCR_HEIGHT 240
-//#define SCR_WIDTH 320
+//#define SCR_HEIGHT 720
+//#define SCR_WIDTH 1280
+#define SCR_HEIGHT 240
+#define SCR_WIDTH 320
 // yeah its from sebastian lague
 // but worse in every way
 
@@ -158,6 +158,49 @@ float randomFloat() {
 	return rand() % 255;
 }
 
+void sampleSurface(float x, float y, SDL_Surface* surface, Uint8 * r, Uint8 * g, Uint8 * b) {
+	Uint8 tempR, tempG, tempB;
+	Uint8 tempRt = 0, tempGt = 0, tempBt = 0;
+	Uint8 tempRs = 0, tempGs = 0, tempBs = 0;
+	float yWeight = y*surface->h - floor(y*surface->h);
+	float xWeight = x*surface->w - floor(x*surface->w);
+	SDL_ReadSurfacePixel(surface, floor(x*surface->w), floor(y*surface->h), &tempR, &tempG, &tempB, NULL);
+	tempRt += tempR * ( 1- yWeight);
+	tempGt += tempG * ( 1- yWeight);
+	tempBt += tempB * ( 1- yWeight);
+	SDL_ReadSurfacePixel(surface, floor(x*surface->w), ceil(y*surface->h), &tempR, &tempG, &tempB, NULL);
+	tempRt += tempR * yWeight;
+	tempGt += tempG * yWeight;
+	tempBt += tempB * yWeight;
+
+
+	SDL_ReadSurfacePixel(surface, ceil(x*surface->w), floor(y*surface->h), &tempR, &tempG, &tempB, NULL);
+	tempRs += tempR * (1 - yWeight);
+	tempGs += tempG * (1 - yWeight);
+	tempBs += tempB * (1 - yWeight);
+	SDL_ReadSurfacePixel(surface, ceil(x*surface->w), ceil(y*surface->h), &tempR, &tempG, &tempB, NULL);
+	tempRs += tempR * yWeight;
+	tempGs += tempG * yWeight;
+	tempBs += tempB * yWeight;
+
+	*r = (tempRt * (1-xWeight)) + (tempRs * (xWeight));
+	*g = (tempGt * (1-xWeight)) + (tempGs * (xWeight));
+	*b = (tempBt * (1-xWeight)) + (tempBs * (xWeight));
+
+}
+
+void getSurfacePixel(SDL_Surface * surface, int x, int y, Uint8 * r, Uint8 * g, Uint8 * b) {
+	// assume texture is locked
+	// why did i add comment above this it makes it look like i used chatgpt but i swear i didnt
+	// here at least some bull somewhere used gemini when i couldnt be fricked
+	Uint32* pixels = (Uint32*)surface->pixels;
+	//int bpp = SDL_BYTESPERPIXEL(surface->format);
+	Uint32 pixel_value = pixels[(y * surface->w) + (x)];
+
+	SDL_GetRGBA(pixel_value, SDL_GetPixelFormatDetails(surface->format), SDL_GetSurfacePalette(surface), r, g, b, NULL);
+}
+
+
 class Transform {
 	public:
 	float pitch = 0;
@@ -284,6 +327,10 @@ class Camera : public Transform {
 	}
 };
 
+namespace modelSamples {
+	
+}
+
 class Model : public Transform {
 	public:
 	Model() {
@@ -294,6 +341,7 @@ class Model : public Transform {
 	//float roll = 0;
 	//float3 position;
 	//std::vector<std::vector<float3>> faces;
+	void (*sample)(SDL_Surface*, int x, int y, Uint8*r,Uint8*g,Uint8*b);
 	std::vector<float3> triPoints;
 	std::vector<float2> texCoords;
 	std::vector<float3> normals;
@@ -480,47 +528,10 @@ float3 Normalize(float3 v)
 constexpr float toRadians(float x) {
 	return (x/360) * 3.1415926*2;
 };
-
-void sampleSurface(float x, float y, SDL_Surface* surface, Uint8 * r, Uint8 * g, Uint8 * b) {
-	Uint8 tempR, tempG, tempB;
-	Uint8 tempRt = 0, tempGt = 0, tempBt = 0;
-	Uint8 tempRs = 0, tempGs = 0, tempBs = 0;
-	float yWeight = y*surface->h - floor(y*surface->h);
-	float xWeight = x*surface->w - floor(x*surface->w);
-	SDL_ReadSurfacePixel(surface, floor(x*surface->w), floor(y*surface->h), &tempR, &tempG, &tempB, NULL);
-	tempRt += tempR * ( 1- yWeight);
-	tempGt += tempG * ( 1- yWeight);
-	tempBt += tempB * ( 1- yWeight);
-	SDL_ReadSurfacePixel(surface, floor(x*surface->w), ceil(y*surface->h), &tempR, &tempG, &tempB, NULL);
-	tempRt += tempR * yWeight;
-	tempGt += tempG * yWeight;
-	tempBt += tempB * yWeight;
-
-
-	SDL_ReadSurfacePixel(surface, ceil(x*surface->w), floor(y*surface->h), &tempR, &tempG, &tempB, NULL);
-	tempRs += tempR * (1 - yWeight);
-	tempGs += tempG * (1 - yWeight);
-	tempBs += tempB * (1 - yWeight);
-	SDL_ReadSurfacePixel(surface, ceil(x*surface->w), ceil(y*surface->h), &tempR, &tempG, &tempB, NULL);
-	tempRs += tempR * yWeight;
-	tempGs += tempG * yWeight;
-	tempBs += tempB * yWeight;
-
-	*r = (tempRt * (1-xWeight)) + (tempRs * (xWeight));
-	*g = (tempGt * (1-xWeight)) + (tempGs * (xWeight));
-	*b = (tempBt * (1-xWeight)) + (tempBs * (xWeight));
-
-}
-
-void getSurfacePixel(SDL_Surface * surface, int x, int y, Uint8 * r, Uint8 * g, Uint8 * b) {
-	// assume texture is locked
-	// why did i add comment above this it makes it look like i used chatgpt but i swear i didnt
-	// here at least some bull somewhere used gemini when i couldnt be fricked
-	Uint32* pixels = (Uint32*)surface->pixels;
-	//int bpp = SDL_BYTESPERPIXEL(surface->format);
-	Uint32 pixel_value = pixels[(y * surface->w) + (x)];
-
-	SDL_GetRGBA(pixel_value, SDL_GetPixelFormatDetails(surface->format), SDL_GetSurfacePalette(surface), r, g, b, NULL);
+float3 Lerp3(float3 a, float3 b, float t)
+{
+		t = Clamp(t, 0, 1);
+		return a + (b - a) * t;
 }
 
 
@@ -538,13 +549,65 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 		#pragma omp parallel for
 		float closeTriDepth;
 		for(int i = 0; i<modelSize; i+=3) {
-			float3 point1 = m.VertexToScreen(m.triPoints.at(i), screen, cam);
-			float3 point2 = m.VertexToScreen(m.triPoints.at(i+1), screen, cam);
-			float3 point3 = m.VertexToScreen(m.triPoints.at(i+2), screen, cam);
-			if(point1.z <= 0 || point2.z <= 0 || point3.z <= 0) continue;
+			float3 point1pre = m.VertexToScreen(m.triPoints.at(i), screen, cam);
+			float3 point2pre = m.VertexToScreen(m.triPoints.at(i+1), screen, cam);
+			float3 point3pre = m.VertexToScreen(m.triPoints.at(i+2), screen, cam);
+			//if(point1.z <= 0 || point2.z <= 0 || point3.z <= 0) continue;
+			//
+			float3 points[6];
+			float3 vpoints[3];
+			vpoints[0] = point1pre;
+			vpoints[1] = point2pre;
+			vpoints[2] = point3pre;
+
+			const float nearClipDist = 0.01;
+			bool clip0 = point1pre.z <= nearClipDist;
+			bool clip1 = point2pre.z <= nearClipDist;
+			bool clip2 = point3pre.z <= nearClipDist;
+			int clipCount = clip0 + clip1 + clip2;
+			float3 point1;
+			float3 point2;
+			float3 point3;
+
+			int triCount = 0;
+			switch (clipCount) {
+				case 0:
+				points[0] = point1pre;
+				points[1] = point2pre;
+				points[2] = point3pre;
+				triCount = 1;
+				break;
+
+				/*case 1:
+				int indexClip = clip0? 0 : clip1? 1 : 2;
+				int indexNext = (indexClip + 1) % 3;
+				int indexPrev = (indexClip - 1 + 3) % 3;
+				float3 pointClipped = vpoints[indexClip];
+				float3 pointA = vpoints[indexNext];
+				float3 pointB = vpoints[indexPrev];
+
+				float fracA = (nearClipDist - pointClipped.z) / (pointA.z - pointClipped.z);
+				float fracB = (nearClipDist - pointClipped.z) / (pointB.z - pointClipped.z);
+
+				float3 clipAlongA = Lerp3(pointClipped, pointA, fracA);
+				float3 clipAlongB = Lerp3(pointClipped, pointB, fracB);
+
+				triCount = 2;
+				break;*/
+
+				//default:
+				//triCount = 0;
+				//	break;
+			}
 					
 
 			//currentFace = tris.at(i);
+			int index;
+			for(int tri = 0; tri<triCount; tri++) {
+			index = ((1+tri)*3)-1;
+			point1 = points[index-2];
+			point2 = points[index-1];
+			point3 = points[index];
 			float minX = fmin(fmin(point1.x,point2.x),point3.x);
 			float minY = fmin(fmin(point1.y,point2.y),point3.y);
 			float maxX = fmax(fmax(point1.x,point2.x),point3.x);
@@ -601,7 +664,8 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 
 						texCoord = texCoord * depth;
 
-						SDL_ReadSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b, NULL);
+						//SDL_ReadSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b, NULL);
+						sampleSurface(texCoord.x, texCoord.y, surface, &r, &g, &b);
 						r= fmin(255,r*l.x);
 						g= fmin(255,g*l.y);
 						b= fmin(255,b*l.z);
@@ -632,6 +696,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						depthBuffer[(y)*SCR_WIDTH + x] = depth;
 					}
 				}
+			}
 			}
 		}
 
@@ -671,10 +736,10 @@ int main(int argc, char**argv) {
 	Model m;
 	Model c;
 
-	c.position.y = 7;
+	c.position.y = 10;
 	//c.position.z = 2;
 	m.position.y = 10;
-	m.position.z = -2.5;
+	m.position.z = 1;
 	//c.pitch = toRadians(90);
 	m.roll = 3.141;
 
@@ -685,7 +750,7 @@ int main(int argc, char**argv) {
 	//m.position.z = 10;
 	//m.position.y = -10;
 	std::string objstr = "";
-	std::ifstream objfile("resources/suzanne.obj");
+	std::ifstream objfile("resources/floor.obj");
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
 	c.init(objLoader.LoadObjFile(objstr));
 	objfile.close();
