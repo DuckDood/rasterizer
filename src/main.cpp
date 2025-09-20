@@ -15,12 +15,12 @@
 #if SDLIMG == 1
 #include <SDL3_image/SDL_image.h>
 #endif
-//#define SCR_HEIGHT 720
-//#define SCR_WIDTH 1280
+#define SCR_HEIGHT 720
+#define SCR_WIDTH 1280
 //#define SCR_HEIGHT 240
 //#define SCR_WIDTH 320
-#define SCR_HEIGHT 120
-#define SCR_WIDTH 160
+//#define SCR_HEIGHT 120
+//#define SCR_WIDTH 160
 // yeah its from sebastian lague
 // but worse in every way
 
@@ -96,6 +96,14 @@ float2 Perpendicular(float2 a) {
 	return float2(a.y, -a.x);
 } 
 
+float3 Normalize(float3 v)
+{
+		float sqrLength = Dot3(v, v);
+		float length = sqrt(sqrLength);
+		if (length == 0) return {0,0,0};
+		return v / length;
+}
+
 /*bool PointOnRightSideOfLine(float2 x, float2 y, float2 p) {
 	//float2 a(p.x-x.x, p.y-x.y);
 	float2 a = p-x;
@@ -107,7 +115,7 @@ float2 Perpendicular(float2 a) {
 float SignedTriangleArea(float2 a, float2 b, float2 c) {
 	float2 ac = c - a;
 	float2 abPerp = Perpendicular(b-a);//
-	return Dot(ac, abPerp) / 2;        //
+	return Dot(ac, abPerp) * 0.5;        //
                                        //
 }
 		
@@ -210,6 +218,7 @@ class Transform {
 	float roll = 0;
 	float3 position = {0,0,0};
 	float3 center = {0,0,0};
+	float3 scale = {1,1,1};
 	//std::vector<std::vector<float3>> faces;
 	//std::vector<float3> triPoints;
 	float3 TransformVector(float3 ihat, float3 khat, float3 jhat, float3 v) {
@@ -252,6 +261,9 @@ class Transform {
 
 	float3 ToWorldPoint(float3 p) {
 		auto [ihat, jhat, khat] = GetBasisVectors();
+		ihat = ihat * scale.x;
+		jhat = jhat * scale.y;
+		khat = khat * scale.z;
 		return TransformVector(ihat, jhat, khat, p + center) + position;
 	}
 
@@ -325,11 +337,116 @@ class Camera : public Transform {
 		//pitch += 1.5708;
 		auto [ihat, jhat, khat] = GetInverseBasisVectors();
 		//pitch -= 1.5708;
-		return TransformVector(ihat, jhat, khat, worldPoint - position);
+		float3 local = TransformVector(ihat, jhat, khat, worldPoint - position);
+
+		local.x /= scale.x;
+		local.y /= scale.y;
+		local.z /= scale.z;
+
+		return local;
 	}
 };
 
 namespace modelSamples {
+	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b) {
+		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
+		float3 normal = {0,0,0};
+		normal = normal + norms[index] / depths.x * weights.x;
+		normal = normal + norms[index+1] / depths.y * weights.y;
+		normal = normal + norms[index+2] /  depths.z * weights.z;
+		normal = normal * depth;
+		normal = Normalize(normal);
+		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
+
+		float lightLevel = (1+Dot3(normal, {0,1,0}))*0.5;
+		float3 l = float3(1.5,1.5,1.5) * lightLevel;
+		
+		//if(sr) {
+		float2 texCoord = {0,0};
+		texCoord = texCoord + coords[index] / depths.x * weights.x;
+		texCoord = texCoord + coords[index+1] / depths.y * weights.y;
+		texCoord = texCoord + coords[index+2] /  depths.z * weights.z;
+
+		texCoord = texCoord * depth;
+
+		SDL_ReadSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), r, g, b, NULL);
+		//sampleSurface(texCoord.x, texCoord.y, surface, &r, &g, &b);
+		*r= fmin(255,*r*l.x);
+		*g= fmin(255,*g*l.y);
+		*b= fmin(255,*b*l.z);
+		//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
+		//sampleSurface(texCoord.x, texCoord.y, surface, &r,&g,&b);
+
+		//SDL_Log("%zu, %d", m.texCoords.size(), i);
+
+		//pixels[(y)*SCR_WIDTH+ x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
+		//} else {
+			//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
+			//normal = normal + float3(1,1,1);
+			//normal = normal * 0.5;
+			/*float3 normal = {0,0,0};
+		normal = normal + m.normals[i] / depths.x * weights.x;
+		normal = normal + m.normals[i+1] / depths.y * weights.y;
+		normal = normal + m.normals[i+2] /  depths.z * weights.z;
+		normal = normal * depth;
+		normal = Normalize(normal);
+		//normal = (normal + float3(1,1,1)) * 0.5;
+		float lightLevel =  (Dot3(normal, {0,0,1})+1)*0.5;
+		float3 l = float3(255,255,255) * lightLevel;*/
+		//r = fmin(255,l.x*255);//normal.x*255;
+		//g = fmin(255,l.y*255);//normal.y*255;
+		//b = fmin(255,l.z*255);//normal.z*255;
+	}
+	void jaggedLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b) {
+		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
+		//float3 normal = {0,0,0};
+		//normal = normal + norms[index] / depths.x * weights.x;
+		//normal = normal + norms[index+1] / depths.y * weights.y;
+		//normal = normal + norms[index+2] /  depths.z * weights.z;
+		//normal = normal * depth;
+		//normal = Normalize(normal);
+		float3 normal = Normalize((norms[index] + norms[index+1] + norms[index+2])*0.33);
+
+		float lightLevel = (1+Dot3(normal, {0,1,0}))*0.5;
+		float3 l = float3(1.5,1.5,1.5) * lightLevel;
+		
+		//if(sr) {
+		float2 texCoord = {0,0};
+		texCoord = texCoord + coords[index] / depths.x * weights.x;
+		texCoord = texCoord + coords[index+1] / depths.y * weights.y;
+		texCoord = texCoord + coords[index+2] /  depths.z * weights.z;
+
+		texCoord = texCoord * depth;
+
+		SDL_ReadSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), r, g, b, NULL);
+		//sampleSurface(texCoord.x, texCoord.y, surface, &r, &g, &b);
+		*r= fmin(255,*r*l.x);
+		*g= fmin(255,*g*l.y);
+		*b= fmin(255,*b*l.z);
+		//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
+		//sampleSurface(texCoord.x, texCoord.y, surface, &r,&g,&b);
+
+		//SDL_Log("%zu, %d", m.texCoords.size(), i);
+
+		//pixels[(y)*SCR_WIDTH+ x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
+		//} else {
+			//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
+			//normal = normal + float3(1,1,1);
+			//normal = normal * 0.5;
+			/*float3 normal = {0,0,0};
+		normal = normal + m.normals[i] / depths.x * weights.x;
+		normal = normal + m.normals[i+1] / depths.y * weights.y;
+		normal = normal + m.normals[i+2] /  depths.z * weights.z;
+		normal = normal * depth;
+		normal = Normalize(normal);
+		//normal = (normal + float3(1,1,1)) * 0.5;
+		float lightLevel =  (Dot3(normal, {0,0,1})+1)*0.5;
+		float3 l = float3(255,255,255) * lightLevel;*/
+		//r = fmin(255,l.x*255);//normal.x*255;
+		//g = fmin(255,l.y*255);//normal.y*255;
+		//b = fmin(255,l.z*255);//normal.z*255;
+	}
+
 	
 }
 
@@ -343,22 +460,24 @@ class Model : public Transform {
 	//float roll = 0;
 	//float3 position;
 	//std::vector<std::vector<float3>> faces;
-	void (*sample)(SDL_Surface*, int x, int y, Uint8*r,Uint8*g,Uint8*b);
+	void (*sample)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b);
 	std::vector<float3> triPoints;
 	std::vector<float2> texCoords;
 	std::vector<float3> normals;
-	Model(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data) {
+	Model(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
 		auto [tri, tex, norm] = data;
 		triPoints = tri;
 		texCoords = tex;
 		normals = norm;
+		sample = samp;
 
 	}
-	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data) {
+	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
 		auto [tri, tex, norm] = data;
 		triPoints = tri;
 		texCoords = tex;
 		normals = norm;
+		sample = samp;
 
 	}
 	/*float3 TransformVector(float3 ihat, float3 khat, float3 jhat, float3 v) {
@@ -526,13 +645,6 @@ float Clamp(float p, float low, float high) {
 	return p;
 };
 
-float3 Normalize(float3 v)
-{
-		float sqrLength = Dot3(v, v);
-		float length = sqrt(sqrLength);
-		if (length == 0) return {0,0,0};
-		return v / length;
-}
 
 constexpr float toRadians(float x) {
 	return (x/360) * 3.1415926*2;
@@ -552,11 +664,10 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 	SDL_LockSurface(surface);
 	
 		// stands for "surface real" trust
-		bool sr = true;
+		//bool sr = true;
 		if(surface == NULL) {
-				//surface = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_ABGR32);
-				//SDL_FillSurfaceRect(surface, NULL, 0xffffffff);
-				sr = false;
+				surface = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_ABGR32);
+				SDL_FillSurfaceRect(surface, NULL, 0xffffffff);
 		}
 		int modelSize = m.triPoints.size();
 		#pragma omp parallel for
@@ -575,7 +686,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 			vpoints[1] = point2pre;
 			vpoints[2] = point3pre;
 
-			const float nearClipDist = 1.01;
+			const float nearClipDist = 0.30;
 			bool clip0 = point1pre.z <= nearClipDist;
 			bool clip1 = point2pre.z <= nearClipDist;
 			bool clip2 = point3pre.z <= nearClipDist;
@@ -737,7 +848,9 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						float depth = 1/Dot3(float3(1/depths.x, 1/depths.y, 1/depths.z), weights);
 						if(depth > depthBuffer[(y)*SCR_WIDTH + x]) continue;
 
-						float3 normal = {0,0,0};
+						
+						// replace this with function passing in rgb pointers
+						/*float3 normal = {0,0,0};
 						normal = normal + norms[index] / depths.x * weights.x;
 						normal = normal + norms[index+1] / depths.y * weights.y;
 						normal = normal + norms[index+2] /  depths.z * weights.z;
@@ -748,7 +861,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						float lightLevel = (1+Dot3(normal, {0,1,0}))*0.5;
 						float3 l = float3(1.5,1.5,1.5) * lightLevel;
 						
-						if(sr) {
+						//if(sr) {
 						float2 texCoord = {0,0};
 						texCoord = texCoord + coords[index] / depths.x * weights.x;
 						texCoord = texCoord + coords[index+1] / depths.y * weights.y;
@@ -756,18 +869,20 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 
 						texCoord = texCoord * depth;
 
-						//SDL_ReadSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b, NULL);
-						sampleSurface(texCoord.x, texCoord.y, surface, &r, &g, &b);
+						SDL_ReadSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b, NULL);
+						//sampleSurface(texCoord.x, texCoord.y, surface, &r, &g, &b);
 						r= fmin(255,r*l.x);
 						g= fmin(255,g*l.y);
-						b= fmin(255,b*l.z);
+						b= fmin(255,b*l.z);*/
+//void (*samp)(float3 weights, float3 depths, float depth, std::vector<float3> norms, std::vector<float2> coords, int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
+						m.sample(weights, depths, depth, norms, coords, index, surface, &r, &g, &b);
 						//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
 						//sampleSurface(texCoord.x, texCoord.y, surface, &r,&g,&b);
 
 						//SDL_Log("%zu, %d", m.texCoords.size(), i);
 
 						//pixels[(y)*SCR_WIDTH+ x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
-						} else {
+						//} else {
 							//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
 							//normal = normal + float3(1,1,1);
 							//normal = normal * 0.5;
@@ -780,10 +895,10 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						//normal = (normal + float3(1,1,1)) * 0.5;
 						float lightLevel =  (Dot3(normal, {0,0,1})+1)*0.5;
 						float3 l = float3(255,255,255) * lightLevel;*/
-						r = fmin(255,l.x*255);//normal.x*255;
-						g = fmin(255,l.y*255);//normal.y*255;
-						b = fmin(255,l.z*255);//normal.z*255;
-						}
+						//r = fmin(255,l.x*255);//normal.x*255;
+						//g = fmin(255,l.y*255);//normal.y*255;
+						//b = fmin(255,l.z*255);//normal.z*255;
+						//}
 						pixels[(y)*SCR_WIDTH + x] = RGBToBin(r,g,b);
 						depthBuffer[(y)*SCR_WIDTH + x] = depth;
 					}
@@ -844,13 +959,13 @@ int main(int argc, char**argv) {
 	std::string objstr = "";
 	std::ifstream objfile("resources/floor.obj");
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
-	c.init(objLoader.LoadObjFile(objstr));
+	c.init(objLoader.LoadObjFile(objstr), modelSamples::smoothLightingAtPoint);
 	objfile.close();
 
 	objfile.open("dave.obj");
 	objstr = "";
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
-	m.init(objLoader.LoadObjFile(objstr));
+	m.init(objLoader.LoadObjFile(objstr), modelSamples::smoothLightingAtPoint);
 
 	objfile.close();
 
