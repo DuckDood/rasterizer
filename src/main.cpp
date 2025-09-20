@@ -15,8 +15,10 @@
 #if SDLIMG == 1
 #include <SDL3_image/SDL_image.h>
 #endif
-#define SCR_HEIGHT 720
-#define SCR_WIDTH 1280
+//#define SCR_HEIGHT 720
+//#define SCR_WIDTH 1280
+#define SCR_HEIGHT 480
+#define SCR_WIDTH 640
 //#define SCR_HEIGHT 240
 //#define SCR_WIDTH 320
 //#define SCR_HEIGHT 120
@@ -86,17 +88,17 @@ class float3{
 
 
 
-float Dot(float2 a, float2 b) {
+inline float Dot(float2 a, float2 b) {
 	return a.x*b.x + a.y*b.y;
 } 
-float Dot3(float3 a, float3 b) {
+inline float Dot3(float3 a, float3 b) {
 	return a.x*b.x + a.y*b.y + a.z * b.z;
 } 
-float2 Perpendicular(float2 a) {
+inline float2 Perpendicular(float2 a) {
 	return float2(a.y, -a.x);
 } 
 
-float3 Normalize(float3 v)
+inline float3 Normalize(float3 v)
 {
 		float sqrLength = Dot3(v, v);
 		float length = sqrt(sqrLength);
@@ -359,7 +361,7 @@ namespace modelSamples {
 		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
 
 		float lightLevel = (1+Dot3(normal, {0,1,0}))*0.5;
-		float3 l = float3(1.5,1.5,1.5) * lightLevel;
+		float3 l = float3(1,1,1) * lightLevel;
 		
 		//if(sr) {
 		float2 texCoord = {0,0};
@@ -408,7 +410,7 @@ namespace modelSamples {
 		float3 normal = Normalize((norms[index] + norms[index+1] + norms[index+2])*0.33);
 
 		float lightLevel = (1+Dot3(normal, {0,1,0}))*0.5;
-		float3 l = float3(1.5,1.5,1.5) * lightLevel;
+		float3 l = float3(1,1,1) * lightLevel;
 		
 		//if(sr) {
 		float2 texCoord = {0,0};
@@ -649,12 +651,12 @@ float Clamp(float p, float low, float high) {
 constexpr float toRadians(float x) {
 	return (x/360) * 3.1415926*2;
 };
-float3 Lerp3(float3 a, float3 b, float t)
+inline float3 Lerp3(float3 a, float3 b, float t)
 {
 		t = Clamp(t, 0, 1);
 		return a + (b - a) * t;
 }
-float2 Lerp2(float2 a, float2 b, float t){
+inline float2 Lerp2(float2 a, float2 b, float t){
 	t = Clamp(t, 0, 1);
 	return a + (b - a) * t;
 }
