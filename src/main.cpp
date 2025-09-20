@@ -17,8 +17,10 @@
 #endif
 //#define SCR_HEIGHT 720
 //#define SCR_WIDTH 1280
-#define SCR_HEIGHT 240
-#define SCR_WIDTH 320
+//#define SCR_HEIGHT 240
+//#define SCR_WIDTH 320
+#define SCR_HEIGHT 120
+#define SCR_WIDTH 160
 // yeah its from sebastian lague
 // but worse in every way
 
@@ -385,11 +387,18 @@ class Model : public Transform {
 		auto [ihat, jhat, khat] = ihjhkh;
 		return TransformVector(ihat, jhat, khat, p) + position;
 	}*/
-
-	float3 VertexToScreen(float3 vertex, float2 numPixels, Camera cam) {
+	float3 VertexToView(float3 vertex, Camera cam) {
 		float3 vertex_world = ToWorldPoint(vertex);
 		float3 vertex_view = cam.ToLocalPoint(vertex_world);
+		return vertex_view;
+
+	}
+
+	float3 ViewToScreen(float3 vertex_view, float2 numPixels, Camera cam) {
+		//float3 vertex_world = ToWorldPoint(vertex);
+		//float3 vertex_view = cam.ToLocalPoint(vertex_world);
 		//float3 vertex_view = cam.ToWorldPoint(vertex_world);
+
 
 		float screenHeight_world = std::tan(cam.fov/2) * 2;
 		float pixelsPerWorldUnit = numPixels.y/screenHeight_world / vertex_view.z;
@@ -533,6 +542,10 @@ float3 Lerp3(float3 a, float3 b, float t)
 		t = Clamp(t, 0, 1);
 		return a + (b - a) * t;
 }
+float2 Lerp2(float2 a, float2 b, float t){
+	t = Clamp(t, 0, 1);
+	return a + (b - a) * t;
+}
 
 
 void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depthBuffer[], SDL_Surface * surface = NULL) {
@@ -549,18 +562,20 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 		#pragma omp parallel for
 		float closeTriDepth;
 		for(int i = 0; i<modelSize; i+=3) {
-			float3 point1pre = m.VertexToScreen(m.triPoints.at(i), screen, cam);
-			float3 point2pre = m.VertexToScreen(m.triPoints.at(i+1), screen, cam);
-			float3 point3pre = m.VertexToScreen(m.triPoints.at(i+2), screen, cam);
+			float3 point1pre = m.VertexToView(m.triPoints.at(i),  cam);
+			float3 point2pre = m.VertexToView(m.triPoints.at(i+1), cam);
+			float3 point3pre = m.VertexToView(m.triPoints.at(i+2), cam);
 			//if(point1.z <= 0 || point2.z <= 0 || point3.z <= 0) continue;
 			//
 			float3 points[6];
+			float2 coords[6];
+			float3 norms[6];
 			float3 vpoints[3];
 			vpoints[0] = point1pre;
 			vpoints[1] = point2pre;
 			vpoints[2] = point3pre;
 
-			const float nearClipDist = 0.01;
+			const float nearClipDist = 1.01;
 			bool clip0 = point1pre.z <= nearClipDist;
 			bool clip1 = point2pre.z <= nearClipDist;
 			bool clip2 = point3pre.z <= nearClipDist;
@@ -575,10 +590,16 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 				points[0] = point1pre;
 				points[1] = point2pre;
 				points[2] = point3pre;
+				norms[0] = m.normals[i];
+				norms[1] = m.normals[i+1];
+				norms[2] = m.normals[i+2];
+				coords[0] = m.texCoords[i];
+				coords[1] = m.texCoords[i+1];
+				coords[2] = m.texCoords[i+2];
 				triCount = 1;
 				break;
 
-				/*case 1:
+				case 1:{
 				int indexClip = clip0? 0 : clip1? 1 : 2;
 				int indexNext = (indexClip + 1) % 3;
 				int indexPrev = (indexClip - 1 + 3) % 3;
@@ -591,9 +612,80 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 
 				float3 clipAlongA = Lerp3(pointClipped, pointA, fracA);
 				float3 clipAlongB = Lerp3(pointClipped, pointB, fracB);
+				//AddRasterizerPoint(model, clipPointAlongEdgeB, i + indexClip, i + indexPrev, fracB);
+				//AddRasterizerPoint(model, clipPointAlongEdgeA, i + indexClip, i + indexNext, fracA);
+				//AddRasterizerPoint(model, pointB, i + indexPrev);
+
+				//AddRasterizerPoint(model, clipPointAlongEdgeA, i + indexClip, i + indexNext, fracA);
+				//AddRasterizerPoint(model, pointA, i + indexNext);
+				//AddRasterizerPoint(model, pointB, i + indexPrev);
+
+				points[0] = clipAlongB;
+				coords[0] = Lerp2(m.texCoords[i+indexClip], m.texCoords[i+indexPrev], fracB);
+				norms[0] = Lerp3(m.normals[i+indexClip], m.normals[i+indexPrev], fracB);
+
+				points[1] = clipAlongA;
+				coords[1] = Lerp2(m.texCoords[i+indexClip], m.texCoords[i+indexNext], fracA);
+				norms[1] = Lerp3(m.normals[i+indexClip], m.normals[i+indexNext], fracA);
+
+				points[2] = pointB;
+				coords[2] = m.texCoords[i+indexPrev];
+				norms[2] = m.normals[i+indexPrev];
+
+
+				points[3] = clipAlongA;
+				coords[3] = Lerp2(m.texCoords[i+indexClip], m.texCoords[i+indexNext], fracA);
+				norms[3] = Lerp3(m.normals[i+indexClip], m.normals[i+indexNext], fracA);
+
+				points[4] = pointA;
+				coords[4] = m.texCoords[i+indexNext];
+				norms[4] = m.normals[i+indexNext];
+
+				points[5] = pointB;
+				coords[5] = m.texCoords[i+indexPrev];
+				norms[5] = m.normals[i+indexPrev];
 
 				triCount = 2;
-				break;*/
+				break;}
+				case 2:
+				{
+					// Figure out which point will not be clipped, and the two that will be
+					int indexNonClip = !clip0 ? 0 : !clip1 ? 1 : 2;
+					int indexNext = (indexNonClip + 1) % 3;
+					int indexPrev = (indexNonClip - 1 + 3) % 3;
+
+					float3 pointNotClipped = vpoints[indexNonClip];
+					float3 pointA = vpoints[indexNext];
+					float3 pointB = vpoints[indexPrev];
+
+					// Fraction along triangle edge at which the depth is equal to the clip distance
+					float fracA = (nearClipDist - pointNotClipped.z) / (pointA.z - pointNotClipped.z);
+					float fracB = (nearClipDist - pointNotClipped.z) / (pointB.z - pointNotClipped.z);
+
+					// New triangle points (in view space)
+					float3 clipPointAlongEdgeA = Lerp3(pointNotClipped, pointA, fracA);
+					float3 clipPointAlongEdgeB = Lerp3(pointNotClipped, pointB, fracB);
+
+					// Create new triangle
+					//AddRasterizerPoint(model, clipPointAlongEdgeB, i + indexNonClip, i + indexPrev, fracB);
+					//AddRasterizerPoint(model, pointNotClipped, i + indexNonClip);
+					//AddRasterizerPoint(model, clipPointAlongEdgeA, i + indexNonClip, i + indexNext, fracA);
+
+					points[0] = clipPointAlongEdgeB;
+					coords[0] = Lerp2(m.texCoords[i+indexNonClip], m.texCoords[i+indexPrev], fracB);
+					norms[0] = Lerp3(m.normals[i+indexNonClip], m.normals[i+indexPrev], fracB);
+
+					points[1] = pointNotClipped;
+					coords[1] = m.texCoords[i+indexNonClip];
+					norms[1] = m.normals[i+indexNonClip];
+
+					points[2] = clipPointAlongEdgeA;
+					coords[2] = Lerp2(m.texCoords[i+indexNonClip], m.texCoords[i+indexNext], fracA);
+					norms[2] = Lerp3(m.normals[i+indexNonClip], m.normals[i+indexNext], fracA);
+
+					triCount = 1;
+					break;
+				}
 
 				//default:
 				//triCount = 0;
@@ -604,10 +696,10 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 			//currentFace = tris.at(i);
 			int index;
 			for(int tri = 0; tri<triCount; tri++) {
-			index = ((1+tri)*3)-1;
-			point1 = points[index-2];
-			point2 = points[index-1];
-			point3 = points[index];
+			index = tri*3;
+			point1 = m.ViewToScreen(points[index], screen, cam);
+			point2 = m.ViewToScreen(points[index+1], screen, cam);
+			point3 = m.ViewToScreen(points[index+2], screen, cam);
 			float minX = fmin(fmin(point1.x,point2.x),point3.x);
 			float minY = fmin(fmin(point1.y,point2.y),point3.y);
 			float maxX = fmax(fmax(point1.x,point2.x),point3.x);
@@ -646,9 +738,9 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						if(depth > depthBuffer[(y)*SCR_WIDTH + x]) continue;
 
 						float3 normal = {0,0,0};
-						normal = normal + m.normals[i] / depths.x * weights.x;
-						normal = normal + m.normals[i+1] / depths.y * weights.y;
-						normal = normal + m.normals[i+2] /  depths.z * weights.z;
+						normal = normal + norms[index] / depths.x * weights.x;
+						normal = normal + norms[index+1] / depths.y * weights.y;
+						normal = normal + norms[index+2] /  depths.z * weights.z;
 						normal = normal * depth;
 						normal = Normalize(normal);
 						//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
@@ -658,9 +750,9 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						
 						if(sr) {
 						float2 texCoord = {0,0};
-						texCoord = texCoord + m.texCoords[i] / depths.x * weights.x;
-						texCoord = texCoord + m.texCoords[i+1] / depths.y * weights.y;
-						texCoord = texCoord + m.texCoords[i+2] /  depths.z * weights.z;
+						texCoord = texCoord + coords[index] / depths.x * weights.x;
+						texCoord = texCoord + coords[index+1] / depths.y * weights.y;
+						texCoord = texCoord + coords[index+2] /  depths.z * weights.z;
 
 						texCoord = texCoord * depth;
 
@@ -1086,8 +1178,9 @@ int main(int argc, char**argv) {
 			}
 		}*/
 		SDL_UnlockTexture(screenTex);
-		SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 0, NULL, SDL_FLIP_VERTICAL);
-		SDL_SetRenderDrawColor(renderer, 255,0,0,255);
+		SDL_FRect r = {0,0,SCR_WIDTH, SCR_HEIGHT};
+		SDL_RenderTextureRotated(renderer, screenTex, NULL,&r, 0, NULL, SDL_FLIP_VERTICAL);
+		SDL_SetRenderDrawColor(renderer, 0,0,0,255);
 		
 		SDL_RenderPresent(renderer);
 		SDL_Log("fps: %f", 1000.f / (SDL_GetTicks()-start_time));
