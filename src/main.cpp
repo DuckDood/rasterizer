@@ -1178,8 +1178,7 @@ int main(int argc, char**argv) {
 			}
 		}*/
 		SDL_UnlockTexture(screenTex);
-		SDL_FRect r = {0,0,SCR_WIDTH, SCR_HEIGHT};
-		SDL_RenderTextureRotated(renderer, screenTex, NULL,&r, 0, NULL, SDL_FLIP_VERTICAL);
+		SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 0, NULL, SDL_FLIP_VERTICAL);
 		SDL_SetRenderDrawColor(renderer, 0,0,0,255);
 		
 		SDL_RenderPresent(renderer);
