@@ -15,10 +15,10 @@
 #if SDLIMG == 1
 #include <SDL3_image/SDL_image.h>
 #endif
-//#define SCR_HEIGHT 720
-//#define SCR_WIDTH 1280
-#define SCR_HEIGHT 480
-#define SCR_WIDTH 640
+#define SCR_HEIGHT 720
+#define SCR_WIDTH 1280
+//#define SCR_HEIGHT 480
+//#define SCR_WIDTH 640
 //#define SCR_HEIGHT 240
 //#define SCR_WIDTH 320
 //#define SCR_HEIGHT 120
@@ -421,7 +421,7 @@ namespace modelSamples {
 		texCoord = texCoord * depth;
 
 		SDL_ReadSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), r, g, b, NULL);
-		//sampleSurface(texCoord.x, texCoord.y, surface, &r, &g, &b);
+		//sampleSurface(texCoord.x, texCoord.y, surface, r,g, b);
 		*r= fmin(255,*r*l.x);
 		*g= fmin(255,*g*l.y);
 		*b= fmin(255,*b*l.z);
@@ -913,9 +913,10 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 }
 
 
-
-
 int main(int argc, char**argv) {
+	constexpr int frameRate = 30;
+	constexpr float targetFrameTime = 1000.f/frameRate;
+
 	srand(time(0));
 	if(!SDL_Init(SDL_INIT_VIDEO)) {
 		SDL_Log("%s", SDL_GetError());
@@ -961,10 +962,10 @@ int main(int argc, char**argv) {
 	std::string objstr = "";
 	std::ifstream objfile("resources/floor.obj");
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
-	c.init(objLoader.LoadObjFile(objstr), modelSamples::smoothLightingAtPoint);
+	c.init(objLoader.LoadObjFile(objstr), modelSamples::jaggedLightingAtPoint);
 	objfile.close();
 
-	objfile.open("dave.obj");
+	objfile.open("resources/dave.obj");
 	objstr = "";
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
 	m.init(objLoader.LoadObjFile(objstr), modelSamples::smoothLightingAtPoint);
@@ -1003,8 +1004,10 @@ int main(int argc, char**argv) {
 	SDL_SetWindowRelativeMouseMode(window, true);
 	SDL_Surface* screenshot;
 
+	int start_time = 0;
+	int endtime = 0;
 	while(running) {
-	int start_time = SDL_GetTicks();
+		start_time = SDL_GetTicks();
 		frameCount++;
 		while(SDL_PollEvent(&event)) {
 			switch(event.type) {
@@ -1190,13 +1193,13 @@ int main(int argc, char**argv) {
 			
 		
 
-		SDL_Log("%d", frameCount);
 		SDL_RenderClear(renderer);
 					cam.pitch = Clamp(cam.pitch, -1.5708, 1.5708);
 		//tris.clear();
 
 		SDL_LockTexture(screenTex, NULL, &pix, &pitch);
 		pixels = (Uint32*)pix;
+		
 		#pragma omp parallel for
 		for(unsigned int y = 0; y<SCR_HEIGHT; y++) {
 			#pragma omp parallel for
@@ -1298,8 +1301,16 @@ int main(int argc, char**argv) {
 		SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 0, NULL, SDL_FLIP_VERTICAL);
 		SDL_SetRenderDrawColor(renderer, 0,0,0,255);
 		
+
 		SDL_RenderPresent(renderer);
-		SDL_Log("fps: %f", 1000.f / (SDL_GetTicks()-start_time));
+		endtime = SDL_GetTicks();
+		int tickspassed = endtime - start_time; 
+		int amountToWait = targetFrameTime - tickspassed;
+		SDL_Log("%d", frameCount);
+		SDL_Log("fps: %f", 1000.f / tickspassed);
+		if(amountToWait > 0) {
+			SDL_Delay(amountToWait);
+		}
 	}
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
