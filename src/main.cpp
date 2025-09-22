@@ -114,7 +114,7 @@ inline float3 Normalize(float3 v)
 	return Dot(a, perp) >= 0;
 }*/
 
-float SignedTriangleArea(float2 a, float2 b, float2 c) {
+inline float SignedTriangleArea(float2 a, float2 b, float2 c) {
 	float2 ac = c - a;
 	float2 abPerp = Perpendicular(b-a);//
 	return Dot(ac, abPerp) * 0.5;        //
@@ -123,7 +123,7 @@ float SignedTriangleArea(float2 a, float2 b, float2 c) {
 		
 
 
-bool PointInTriangle(float2 a, float2 b, float2 c, float2 p, float3& weights) {
+inline bool PointInTriangle(float2 a, float2 b, float2 c, float2 p, float3& weights) {
 	/*bool sideAB = PointOnRightSideOfLine(a,b,p);	
 	bool sideBC = PointOnRightSideOfLine(b,c,p);		
 	bool sideCA = PointOnRightSideOfLine(c,a,p);	*/
@@ -171,6 +171,7 @@ float randomFloat() {
 }
 
 void sampleSurface(float x, float y, SDL_Surface* surface, Uint8 * r, Uint8 * g, Uint8 * b) {
+	// theres a problem with ceiling stuff going outside the ranges hopefully i fix that at some point
 	Uint8 tempR, tempG, tempB;
 	Uint8 tempRt = 0, tempGt = 0, tempBt = 0;
 	Uint8 tempRs = 0, tempGs = 0, tempBs = 0;
@@ -221,8 +222,14 @@ class Transform {
 	float3 position = {0,0,0};
 	float3 center = {0,0,0};
 	float3 scale = {1,1,1};
+
+	float3 ihat, khat, jhat;
+	float3 ihat_inv, khat_inv, jhat_inv;
 	//std::vector<std::vector<float3>> faces;
 	//std::vector<float3> triPoints;
+	Transform() {
+		UpdateRotation();
+	}
 	float3 TransformVector(float3 ihat, float3 khat, float3 jhat, float3 v) {
 		return ihat * v.x + jhat * v.y + khat * v.z;
 	}
@@ -262,12 +269,37 @@ class Transform {
 	}
 
 	float3 ToWorldPoint(float3 p) {
-		auto [ihat, jhat, khat] = GetBasisVectors();
-		ihat = ihat * scale.x;
-		jhat = jhat * scale.y;
-		khat = khat * scale.z;
-		return TransformVector(ihat, jhat, khat, p + center) + position;
+		//auto [ihat, jhat, khat] = GetBasisVectors();
+		float3 ihatT = ihat * scale.x;
+		float3 jhatT = jhat * scale.y;
+		float3 khatT = khat * scale.z;
+		return TransformVector(ihatT, jhatT, khatT, p + center) + position;
 	}
+	float3 ToLocalPoint(float3 worldPoint) {
+		//pitch += 1.5708;
+		//auto [ihat, jhat, khat] = GetInverseBasisVectors();
+		//pitch -= 1.5708;
+		float3 local = TransformVector(ihat_inv, jhat_inv, khat_inv, worldPoint - position);
+
+		local.x /= scale.x;
+		local.y /= scale.y;
+		local.z /= scale.z;
+
+		return local;
+	}
+	void UpdateRotation() {
+		auto [ihatTemp, jhatTemp, khatTemp] = GetBasisVectors();
+		auto [ihatInvTemp, jhatInvTemp, khatInvTemp] = GetInverseBasisVectors();
+
+		ihat = ihatTemp;
+		jhat = jhatTemp;
+		khat = khatTemp;
+
+		ihat_inv = ihatInvTemp;
+		jhat_inv = jhatInvTemp;
+		khat_inv = khatInvTemp;
+		
+	};
 
 
 	/*float3 VertexToScreen(float3 vertex, float2 numPixels, float fov = 1) {
@@ -335,18 +367,6 @@ class Transform {
 class Camera : public Transform {
 	public: 
 	float fov;
-	float3 ToLocalPoint(float3 worldPoint) {
-		//pitch += 1.5708;
-		auto [ihat, jhat, khat] = GetInverseBasisVectors();
-		//pitch -= 1.5708;
-		float3 local = TransformVector(ihat, jhat, khat, worldPoint - position);
-
-		local.x /= scale.x;
-		local.y /= scale.y;
-		local.z /= scale.z;
-
-		return local;
-	}
 };
 
 namespace modelSamples {
@@ -371,7 +391,7 @@ namespace modelSamples {
 
 		texCoord = texCoord * depth;
 
-		SDL_ReadSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), r, g, b, NULL);
+		SDL_ReadSurfacePixel(surface, floor(texCoord.x*surface->w), floor(texCoord.y*surface->h), r, g, b, NULL);
 		//sampleSurface(texCoord.x, texCoord.y, surface, &r, &g, &b);
 		*r= fmin(255,*r*l.x);
 		*g= fmin(255,*g*l.y);
@@ -420,7 +440,7 @@ namespace modelSamples {
 
 		texCoord = texCoord * depth;
 
-		SDL_ReadSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), r, g, b, NULL);
+		SDL_ReadSurfacePixel(surface, floor(texCoord.x*surface->w), floor(texCoord.y*surface->h), r, g, b, NULL);
 		//sampleSurface(texCoord.x, texCoord.y, surface, r,g, b);
 		*r= fmin(255,*r*l.x);
 		*g= fmin(255,*g*l.y);
@@ -449,12 +469,49 @@ namespace modelSamples {
 		//b = fmin(255,l.z*255);//normal.z*255;
 	}
 
+	void noLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b) {
+		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
+		//if(sr) {
+		float2 texCoord = {0,0};
+		texCoord = texCoord + coords[index] / depths.x * weights.x;
+		texCoord = texCoord + coords[index+1] / depths.y * weights.y;
+		texCoord = texCoord + coords[index+2] /  depths.z * weights.z;
+
+		texCoord = texCoord * depth;
+
+		SDL_ReadSurfacePixel(surface, floor(texCoord.x*surface->w), floor(texCoord.y*surface->h), r, g, b, NULL);
+		//sampleSurface(texCoord.x, texCoord.y, surface, &r, &g, &b);
+		//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
+		//sampleSurface(texCoord.x, texCoord.y, surface, r,g,b);
+
+		//SDL_Log("%zu, %d", m.texCoords.size(), i);
+
+		//pixels[(y)*SCR_WIDTH+ x] = RGBToBin(col[i/3].x, col[i/3].y, col[i/3].z);
+		//} else {
+			//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
+			//normal = normal + float3(1,1,1);
+			//normal = normal * 0.5;
+			/*float3 normal = {0,0,0};
+		normal = normal + m.normals[i] / depths.x * weights.x;
+		normal = normal + m.normals[i+1] / depths.y * weights.y;
+		normal = normal + m.normals[i+2] /  depths.z * weights.z;
+		normal = normal * depth;
+		normal = Normalize(normal);
+		//normal = (normal + float3(1,1,1)) * 0.5;
+		float lightLevel =  (Dot3(normal, {0,0,1})+1)*0.5;
+		float3 l = float3(255,255,255) * lightLevel;*/
+		//r = fmin(255,l.x*255);//normal.x*255;
+		//g = fmin(255,l.y*255);//normal.y*255;
+		//b = fmin(255,l.z*255);//normal.z*255;
+	}
+
 	
 }
 
 class Model : public Transform {
 	public:
 	Model() {
+		UpdateRotation();
 
 	}
 	//float pitch = 0;
@@ -472,6 +529,7 @@ class Model : public Transform {
 		texCoords = tex;
 		normals = norm;
 		sample = samp;
+		UpdateRotation();
 
 	}
 	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
@@ -480,6 +538,7 @@ class Model : public Transform {
 		texCoords = tex;
 		normals = norm;
 		sample = samp;
+		UpdateRotation();
 
 	}
 	/*float3 TransformVector(float3 ihat, float3 khat, float3 jhat, float3 v) {
@@ -668,7 +727,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 		// stands for "surface real" trust
 		//bool sr = true;
 		if(surface == NULL) {
-				surface = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_ABGR32);
+				surface = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_ABGR32);
 				SDL_FillSurfaceRect(surface, NULL, 0xffffffff);
 		}
 		int modelSize = m.triPoints.size();
@@ -912,10 +971,12 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 	SDL_UnlockSurface(surface);
 }
 
-
 int main(int argc, char**argv) {
 	constexpr int frameRate = 30;
 	constexpr float targetFrameTime = 1000.f/frameRate;
+
+	int realWinWidth;
+	int realWinHeight;
 
 	srand(time(0));
 	if(!SDL_Init(SDL_INIT_VIDEO)) {
@@ -944,6 +1005,7 @@ int main(int argc, char**argv) {
 	Camera cam;
 	cam.fov = 1;
 	Model m;
+	m.scale = {5,5,5};
 	Model c;
 
 	c.position.y = 10;
@@ -960,12 +1022,12 @@ int main(int argc, char**argv) {
 	//m.position.z = 10;
 	//m.position.y = -10;
 	std::string objstr = "";
-	std::ifstream objfile("resources/floor.obj");
+	std::ifstream objfile("resources/cake.obj");
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
-	c.init(objLoader.LoadObjFile(objstr), modelSamples::jaggedLightingAtPoint);
+	c.init(objLoader.LoadObjFile(objstr), modelSamples::smoothLightingAtPoint);
 	objfile.close();
 
-	objfile.open("resources/dave.obj");
+	objfile.open("resources/sky.obj");
 	objstr = "";
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
 	m.init(objLoader.LoadObjFile(objstr), modelSamples::smoothLightingAtPoint);
@@ -1008,6 +1070,7 @@ int main(int argc, char**argv) {
 	int endtime = 0;
 	while(running) {
 		start_time = SDL_GetTicks();
+		SDL_GetWindowSize(window, &realWinWidth, &realWinHeight);
 		frameCount++;
 		while(SDL_PollEvent(&event)) {
 			switch(event.type) {
@@ -1106,12 +1169,15 @@ int main(int argc, char**argv) {
 					float2 mouseDelta(event.motion.xrel / SCR_WIDTH * mouseSensitivity, event.motion.yrel / SCR_WIDTH * mouseSensitivity);
 					cam.pitch += Clamp(mouseDelta.y, -1.48353, 1.48353);
 					cam.yaw -=  mouseDelta.x;
+					cam.UpdateRotation();
 					break;
 
 
 			}
 
 		}
+		m.roll+=0.01;
+		m.UpdateRotation();
 		//m.position.z += sin(frameCount*0.1)*0.01;
 		/*if(keyDown[D]) {
 			m.yaw+=0.02;
@@ -1244,8 +1310,9 @@ int main(int argc, char**argv) {
 				}
 			}
 		}*/
+		//m.UpdateRotation();
 		RenderModel(m, cam, screen, pixels, depthBuffer, uvtex);
-		RenderModel(c, cam, screen, pixels, depthBuffer, NULL);
+		//RenderModel(c, cam, screen, pixels, depthBuffer, NULL);
 		//RenderModel(c, s2, cam, screen, pixels, depthBuffer, col);
 		/*#pragma omp parallel for
 		for(int i = 0; i<s2; i+=3) {
@@ -1298,8 +1365,9 @@ int main(int argc, char**argv) {
 			}
 		}*/
 		SDL_UnlockTexture(screenTex);
+
 		SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 0, NULL, SDL_FLIP_VERTICAL);
-		SDL_SetRenderDrawColor(renderer, 0,0,0,255);
+		SDL_SetRenderDrawColor(renderer, 255,0,0,255);
 		
 
 		SDL_RenderPresent(renderer);
