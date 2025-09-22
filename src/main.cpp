@@ -207,8 +207,8 @@ void getSurfacePixel(SDL_Surface * surface, int x, int y, Uint8 * r, Uint8 * g, 
 	// why did i add comment above this it makes it look like i used chatgpt but i swear i didnt
 	// here at least some bull somewhere used gemini when i couldnt be fricked
 	Uint32* pixels = (Uint32*)surface->pixels;
-	//int bpp = SDL_BYTESPERPIXEL(surface->format);
-	Uint32 pixel_value = pixels[(y * surface->w) + (x)];
+	int bpp = SDL_BYTESPERPIXEL(surface->format);
+	Uint32 pixel_value = pixels[((y * surface->pitch) + (x))/bpp];
 
 	SDL_GetRGBA(pixel_value, SDL_GetPixelFormatDetails(surface->format), SDL_GetSurfacePalette(surface), r, g, b, NULL);
 }
@@ -392,7 +392,7 @@ namespace modelSamples {
 		texCoord = texCoord * depth;
 
 		SDL_ReadSurfacePixel(surface, floor(texCoord.x*surface->w), floor(texCoord.y*surface->h), r, g, b, NULL);
-		//sampleSurface(texCoord.x, texCoord.y, surface, &r, &g, &b);
+		//sampleSurface(texCoord.x, texCoord.y, surface, r, g, b);
 		*r= fmin(255,*r*l.x);
 		*g= fmin(255,*g*l.y);
 		*b= fmin(255,*b*l.z);
@@ -1008,7 +1008,6 @@ int main(int argc, char**argv) {
 	m.scale = {5,5,5};
 	Model c;
 
-	c.position.y = 10;
 	//c.position.z = 2;
 	m.position.y = 10;
 	m.position.z = 1;
@@ -1022,12 +1021,12 @@ int main(int argc, char**argv) {
 	//m.position.z = 10;
 	//m.position.y = -10;
 	std::string objstr = "";
-	std::ifstream objfile("resources/cake.obj");
+	std::ifstream objfile("stars.obj");
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
-	c.init(objLoader.LoadObjFile(objstr), modelSamples::smoothLightingAtPoint);
+	c.init(objLoader.LoadObjFile(objstr), modelSamples::noLightingAtPoint);
 	objfile.close();
 
-	objfile.open("resources/sky.obj");
+	objfile.open("resources/earth.obj");
 	objstr = "";
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
 	m.init(objLoader.LoadObjFile(objstr), modelSamples::smoothLightingAtPoint);
@@ -1312,7 +1311,7 @@ int main(int argc, char**argv) {
 		}*/
 		//m.UpdateRotation();
 		RenderModel(m, cam, screen, pixels, depthBuffer, uvtex);
-		//RenderModel(c, cam, screen, pixels, depthBuffer, NULL);
+		RenderModel(c, cam, screen, pixels, depthBuffer, NULL);
 		//RenderModel(c, s2, cam, screen, pixels, depthBuffer, col);
 		/*#pragma omp parallel for
 		for(int i = 0; i<s2; i+=3) {
@@ -1374,11 +1373,15 @@ int main(int argc, char**argv) {
 		endtime = SDL_GetTicks();
 		int tickspassed = endtime - start_time; 
 		int amountToWait = targetFrameTime - tickspassed;
-		SDL_Log("%d", frameCount);
-		SDL_Log("fps: %f", 1000.f / tickspassed);
+		//SDL_Log("%d", frameCount);
+		//SDL_Log("fps: %f", 1000.f / tickspassed);
 		if(amountToWait > 0) {
 			SDL_Delay(amountToWait);
 		}
+		endtime = SDL_GetTicks();
+		tickspassed = endtime - start_time; 
+		SDL_Log("%d", frameCount);
+		SDL_Log("fps: %f", 1000.f / tickspassed);
 	}
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
