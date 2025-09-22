@@ -15,8 +15,10 @@
 #if SDLIMG == 1
 #include <SDL3_image/SDL_image.h>
 #endif
-#define SCR_HEIGHT 720
-#define SCR_WIDTH 1280
+//#define SCR_HEIGHT 720
+//#define SCR_WIDTH 1280
+#define SCR_HEIGHT 540
+#define SCR_WIDTH 960
 //#define SCR_HEIGHT 480
 //#define SCR_WIDTH 640
 //#define SCR_HEIGHT 240
@@ -227,6 +229,7 @@ class Transform {
 	float3 ihat_inv, khat_inv, jhat_inv;
 	//std::vector<std::vector<float3>> faces;
 	//std::vector<float3> triPoints;
+	Transform* parent = NULL;
 	Transform() {
 		UpdateRotation();
 	}
@@ -273,12 +276,15 @@ class Transform {
 		float3 ihatT = ihat * scale.x;
 		float3 jhatT = jhat * scale.y;
 		float3 khatT = khat * scale.z;
-		return TransformVector(ihatT, jhatT, khatT, p + center) + position;
+		float3 world = TransformVector(ihatT, jhatT, khatT, p + center) + position;
+		if(parent != NULL) world = parent->ToWorldPoint(world);
+		return world;
 	}
 	float3 ToLocalPoint(float3 worldPoint) {
 		//pitch += 1.5708;
 		//auto [ihat, jhat, khat] = GetInverseBasisVectors();
 		//pitch -= 1.5708;
+		if(parent != NULL) worldPoint = parent->ToLocalPoint(worldPoint);
 		float3 local = TransformVector(ihat_inv, jhat_inv, khat_inv, worldPoint - position);
 
 		local.x /= scale.x;
@@ -367,6 +373,8 @@ class Transform {
 class Camera : public Transform {
 	public: 
 	float fov;
+	// hoping this blocks using camera having parent because it no work correctly for some reason
+	const Transform* parent = NULL;
 };
 
 namespace modelSamples {
@@ -1015,6 +1023,8 @@ int main(int argc, char**argv) {
 	m.roll = 3.141;
 
 	SDL_Rect mouseRect = {SCR_WIDTH/2, SCR_HEIGHT/2, 3, 3};
+	c.parent = &m;
+	cam.parent = &m;
 
 
 	//std::vector<Model> models;
