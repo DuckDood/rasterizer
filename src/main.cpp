@@ -67,6 +67,9 @@ class float3{
 	float3 operator*(float b) {
 		return float3(this->x * b, this->y * b, this->z * b);
 	}
+	float3 operator*(float3 b) {
+		return float3(this->x * b.x, this->y * b.y, this->z * b.z);
+	}
 	float3 operator/(float b) {
 		return float3(this->x / b, this->y / b, this->z / b);
 	}
@@ -165,12 +168,12 @@ Uint32 RGBToBin(int r, int g, int b) {
 }
 
 
-float2 randomFloat2() {
+/*float2 randomFloat2() {
 	return float2(rand() % SCR_WIDTH, rand() % SCR_HEIGHT);
 }
 float randomFloat() {
 	return rand() % 255;
-}
+}*/
 
 void sampleSurface(float x, float y, SDL_Surface* surface, Uint8 * r, Uint8 * g, Uint8 * b) {
 	// theres a problem with ceiling stuff going outside the ranges hopefully i fix that at some point
@@ -370,6 +373,110 @@ class Transform {
 	}*/
 };
 
+
+	std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> LoadObjFile(std::string obj) {
+		std::vector<float3> allPoints;
+		std::vector<float3> triPoints;
+		std::vector<float2> allTexCoords;
+		std::vector<float2> texCoords;
+		std::vector<float3> allNormals;
+		std::vector<float3> normals;
+
+		std::stringstream lines(obj);
+		std::string line;
+		int a=0;
+
+		while(std::getline(lines, line, '\n')) {
+			if(line.length() < 2) continue;
+			if(line.substr(0, 2) == "v ") {
+				std::vector<float> axes;
+				std::stringstream words(line);
+				std::string word;
+				int i = 2;
+				while(std::getline(words, word, ' ')) {
+					if(i > 2) {
+						axes.push_back(std::stof(word));
+					}
+					i++;
+				}
+				allPoints.push_back({axes[0], axes[1], axes[2]});
+			} else if(line.substr(0,3) == "vt ") {
+
+				std::vector<std::string> axes;
+				std::stringstream words(line);
+				std::string word;
+				int i = 2;
+				while(std::getline(words, word, ' ')) {
+					if(i > 2) {
+						axes.push_back(word);
+					}
+					i++;
+				}
+				float2 t = float2(std::stof(axes[0]), 1-std::stof(axes[1]));
+				allTexCoords.push_back(t);
+				
+			}else if(line.substr(0,3) == "vn ") {
+
+				std::vector<std::string> axes;
+				std::stringstream words(line);
+				std::string word;
+				int i = 2;
+				while(std::getline(words, word, ' ')) {
+					if(i > 2) {
+						axes.push_back(word);
+					}
+					i++;
+				}
+				float3 t = float3(std::stof(axes[0]), std::stof(axes[1]), std::stof(axes[2]));
+				allNormals.push_back(t);
+				
+			}else
+
+			if(line.substr(0, 2) == "f ") {
+				std::stringstream words(line);
+				std::string word;
+				std::vector<std::string> faceIndexGroups;
+				int c = 2;
+				while(std::getline(words, word, ' ')) {
+					if(c > 2) {
+						faceIndexGroups.push_back(word);
+					}
+					c++;
+				}
+
+				for(int i = 0; i<faceIndexGroups.size(); i++) {
+					std::vector<int> indexGroup;
+					std::stringstream thisFaceGroup(faceIndexGroups[i]);
+					while(std::getline(thisFaceGroup, word, '/')) {
+						if(word.empty()) indexGroup.push_back(0); else
+						indexGroup.push_back(std::stoi(word));
+					}
+					int pointIndex = indexGroup[0]-1;
+					int texIndex = indexGroup.size() > 1? indexGroup.at(1)-1 : -1;
+					int normIndex = indexGroup.size() > 2? indexGroup.at(2)-1 : -1;
+					if(i>=3) triPoints.push_back(triPoints[triPoints.size()-(3 * i - 6)]);
+					if(i>=3) triPoints.push_back(triPoints[triPoints.size()-(2)]);
+
+					if(i>=3) texCoords.push_back(texCoords[texCoords.size()-(3 * i - 6)]);
+					if(i>=3) texCoords.push_back(texCoords[texCoords.size()-(2)]);
+
+					if(i>=3) normals.push_back(normals[normals.size()-(3 * i - 6)]);
+					if(i>=3) normals.push_back(normals[normals.size()-(2)]);
+
+					triPoints.push_back(allPoints[pointIndex]);
+					texCoords.push_back(texIndex >= 0? allTexCoords[texIndex] : float2(0,0));
+					normals.push_back(normIndex >= 0? allNormals[normIndex] : float3(0,0,0));
+				}
+
+			}
+		} 
+		return {triPoints, texCoords, normals};
+	}
+
+
+
+
+
 class Camera : public Transform {
 	public: 
 	float fov;
@@ -377,25 +484,119 @@ class Camera : public Transform {
 	const Transform* parent = NULL;
 };
 
+class Model : public Transform {
+	public:
+	Model() {
+		UpdateRotation();
+
+	}
+	//float pitch = 0;
+	//float yaw = 0;
+	//float roll = 0;
+	//float3 position;
+	//std::vector<std::vector<float3>> faces;
+	void (*sample)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b);
+	std::vector<float3> triPoints;
+	std::vector<float2> texCoords;
+	std::vector<float3> normals;
+	Model(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
+		auto [tri, tex, norm] = data;
+		triPoints = tri;
+		texCoords = tex;
+		normals = norm;
+		sample = samp;
+		UpdateRotation();
+
+	}
+	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
+		auto [tri, tex, norm] = data;
+		triPoints = tri;
+		texCoords = tex;
+		normals = norm;
+		sample = samp;
+		UpdateRotation();
+
+	}
+	/*float3 TransformVector(float3 ihat, float3 khat, float3 jhat, float3 v) {
+		return ihat * v.x + jhat * v.y + khat * v.z;
+	}
+
+	std::tuple<float3, float3, float3> GetBasisVectors() {
+		float3 ihat_yaw = float3(std::cos(yaw), 0, std::sin(yaw));
+		float3 jhat_yaw = float3(0, 1, 0);
+		float3 khat_yaw = float3(-std::sin(yaw), 0, std::cos(yaw));
+
+		float3 ihat_pitch = float3(1, 0, 0);
+		float3 jhat_pitch = float3(0, std::cos(pitch), -std::sin(pitch));
+		float3 khat_pitch = float3(0, std::sin(pitch), std::cos(pitch));
+		
+
+		float3 ihat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, ihat_pitch);
+		float3 jhat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, jhat_pitch);
+		float3 khat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, khat_pitch);
+
+		return {ihat, jhat, khat};
+	}
+
+	float3 ToWorldPoint(float3 p) {
+		std::tuple< float3, float3, float3> ihjhkh =  GetBasisVectors();
+		auto [ihat, jhat, khat] = ihjhkh;
+		return TransformVector(ihat, jhat, khat, p) + position;
+	}*/
+	float3 VertexToView(float3 vertex, Camera cam) {
+		float3 vertex_world = ToWorldPoint(vertex);
+		float3 vertex_view = cam.ToLocalPoint(vertex_world);
+		return vertex_view;
+
+	}
+
+	float3 ViewToScreen(float3 vertex_view, float2 numPixels, Camera cam) {
+		//float3 vertex_world = ToWorldPoint(vertex);
+		//float3 vertex_view = cam.ToLocalPoint(vertex_world);
+		//float3 vertex_view = cam.ToWorldPoint(vertex_world);
+
+
+		float screenHeight_world = std::tan(cam.fov/2) * 2;
+		float pixelsPerWorldUnit = numPixels.y/screenHeight_world / vertex_view.z;
+
+		float2 pixelOffset = float2(vertex_view.x * pixelsPerWorldUnit, vertex_view.y * pixelsPerWorldUnit);
+		return float3(numPixels.x /2 + pixelOffset.x, numPixels.y/2 + pixelOffset.y, vertex_view.z);
+	}
+
+
+
+
+
+};
+Model m;
+	Camera cam;
+
 namespace modelSamples {
+	// i used gemini for help here but i didnt straight copy paste code
 	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b) {
+
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
 		float3 normal = {0,0,0};
-		normal = normal + norms[index] / depths.x * weights.x;
-		normal = normal + norms[index+1] / depths.y * weights.y;
-		normal = normal + norms[index+2] /  depths.z * weights.z;
+
+		float depthX = 1/depths.x;
+		float depthY = 1/depths.y;
+		float depthZ = 1/depths.z;
+
+		normal = normal + (norms[index] * depthX) * weights.x;
+		normal = normal + (norms[index+1] * depthY) * weights.y;
+		normal = normal + (norms[index+2] *  depthZ) * weights.z;
 		normal = normal * depth;
 		normal = Normalize(normal);
 		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
-
-		float lightLevel = (1+Dot3(normal, {0,1,0}))*0.5;
+		//
+		float lightLevel = (1+Dot3(normal, {0,1,0})) * 0.5;
 		float3 l = float3(1,1,1) * lightLevel;
 		
 		//if(sr) {
 		float2 texCoord = {0,0};
-		texCoord = texCoord + coords[index] / depths.x * weights.x;
-		texCoord = texCoord + coords[index+1] / depths.y * weights.y;
-		texCoord = texCoord + coords[index+2] /  depths.z * weights.z;
+		texCoord = texCoord + (coords[index] * depthX) * weights.x;
+		texCoord = texCoord + (coords[index+1] * depthY) * weights.y;
+		texCoord = texCoord + (coords[index+2] *  depthZ) * weights.z;
 
 		texCoord = texCoord * depth;
 
@@ -516,188 +717,6 @@ namespace modelSamples {
 	
 }
 
-class Model : public Transform {
-	public:
-	Model() {
-		UpdateRotation();
-
-	}
-	//float pitch = 0;
-	//float yaw = 0;
-	//float roll = 0;
-	//float3 position;
-	//std::vector<std::vector<float3>> faces;
-	void (*sample)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b);
-	std::vector<float3> triPoints;
-	std::vector<float2> texCoords;
-	std::vector<float3> normals;
-	Model(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
-		auto [tri, tex, norm] = data;
-		triPoints = tri;
-		texCoords = tex;
-		normals = norm;
-		sample = samp;
-		UpdateRotation();
-
-	}
-	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
-		auto [tri, tex, norm] = data;
-		triPoints = tri;
-		texCoords = tex;
-		normals = norm;
-		sample = samp;
-		UpdateRotation();
-
-	}
-	/*float3 TransformVector(float3 ihat, float3 khat, float3 jhat, float3 v) {
-		return ihat * v.x + jhat * v.y + khat * v.z;
-	}
-
-	std::tuple<float3, float3, float3> GetBasisVectors() {
-		float3 ihat_yaw = float3(std::cos(yaw), 0, std::sin(yaw));
-		float3 jhat_yaw = float3(0, 1, 0);
-		float3 khat_yaw = float3(-std::sin(yaw), 0, std::cos(yaw));
-
-		float3 ihat_pitch = float3(1, 0, 0);
-		float3 jhat_pitch = float3(0, std::cos(pitch), -std::sin(pitch));
-		float3 khat_pitch = float3(0, std::sin(pitch), std::cos(pitch));
-		
-
-		float3 ihat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, ihat_pitch);
-		float3 jhat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, jhat_pitch);
-		float3 khat = TransformVector(ihat_yaw, jhat_yaw, khat_yaw, khat_pitch);
-
-		return {ihat, jhat, khat};
-	}
-
-	float3 ToWorldPoint(float3 p) {
-		std::tuple< float3, float3, float3> ihjhkh =  GetBasisVectors();
-		auto [ihat, jhat, khat] = ihjhkh;
-		return TransformVector(ihat, jhat, khat, p) + position;
-	}*/
-	float3 VertexToView(float3 vertex, Camera cam) {
-		float3 vertex_world = ToWorldPoint(vertex);
-		float3 vertex_view = cam.ToLocalPoint(vertex_world);
-		return vertex_view;
-
-	}
-
-	float3 ViewToScreen(float3 vertex_view, float2 numPixels, Camera cam) {
-		//float3 vertex_world = ToWorldPoint(vertex);
-		//float3 vertex_view = cam.ToLocalPoint(vertex_world);
-		//float3 vertex_view = cam.ToWorldPoint(vertex_world);
-
-
-		float screenHeight_world = std::tan(cam.fov/2) * 2;
-		float pixelsPerWorldUnit = numPixels.y/screenHeight_world / vertex_view.z;
-
-		float2 pixelOffset = float2(vertex_view.x * pixelsPerWorldUnit, vertex_view.y * pixelsPerWorldUnit);
-		return float3(numPixels.x /2 + pixelOffset.x, numPixels.y/2 + pixelOffset.y, vertex_view.z);
-	}
-
-	std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> LoadObjFile(std::string obj) {
-		std::vector<float3> allPoints;
-		std::vector<float3> triPoints;
-		std::vector<float2> allTexCoords;
-		std::vector<float2> texCoords;
-		std::vector<float3> allNormals;
-		std::vector<float3> normals;
-
-		std::stringstream lines(obj);
-		std::string line;
-		int a=0;
-
-		while(std::getline(lines, line, '\n')) {
-			if(line.length() < 2) continue;
-			if(line.substr(0, 2) == "v ") {
-				std::vector<float> axes;
-				std::stringstream words(line);
-				std::string word;
-				int i = 2;
-				while(std::getline(words, word, ' ')) {
-					if(i > 2) {
-						axes.push_back(std::stof(word));
-					}
-					i++;
-				}
-				allPoints.push_back({axes[0], axes[1], axes[2]});
-			} else if(line.substr(0,3) == "vt ") {
-
-				std::vector<std::string> axes;
-				std::stringstream words(line);
-				std::string word;
-				int i = 2;
-				while(std::getline(words, word, ' ')) {
-					if(i > 2) {
-						axes.push_back(word);
-					}
-					i++;
-				}
-				float2 t = float2(std::stof(axes[0]), 1-std::stof(axes[1]));
-				allTexCoords.push_back(t);
-				
-			}else if(line.substr(0,3) == "vn ") {
-
-				std::vector<std::string> axes;
-				std::stringstream words(line);
-				std::string word;
-				int i = 2;
-				while(std::getline(words, word, ' ')) {
-					if(i > 2) {
-						axes.push_back(word);
-					}
-					i++;
-				}
-				float3 t = float3(std::stof(axes[0]), std::stof(axes[1]), std::stof(axes[2]));
-				allNormals.push_back(t);
-				
-			}else
-
-			if(line.substr(0, 2) == "f ") {
-				std::stringstream words(line);
-				std::string word;
-				std::vector<std::string> faceIndexGroups;
-				int c = 2;
-				while(std::getline(words, word, ' ')) {
-					if(c > 2) {
-						faceIndexGroups.push_back(word);
-					}
-					c++;
-				}
-
-				for(int i = 0; i<faceIndexGroups.size(); i++) {
-					std::vector<int> indexGroup;
-					std::stringstream thisFaceGroup(faceIndexGroups[i]);
-					while(std::getline(thisFaceGroup, word, '/')) {
-						if(word.empty()) indexGroup.push_back(0); else
-						indexGroup.push_back(std::stoi(word));
-					}
-					int pointIndex = indexGroup[0]-1;
-					int texIndex = indexGroup.size() > 1? indexGroup.at(1)-1 : -1;
-					int normIndex = indexGroup.size() > 2? indexGroup.at(2)-1 : -1;
-					if(i>=3) triPoints.push_back(triPoints[triPoints.size()-(3 * i - 6)]);
-					if(i>=3) triPoints.push_back(triPoints[triPoints.size()-(2)]);
-
-					if(i>=3) texCoords.push_back(texCoords[texCoords.size()-(3 * i - 6)]);
-					if(i>=3) texCoords.push_back(texCoords[texCoords.size()-(2)]);
-
-					if(i>=3) normals.push_back(normals[normals.size()-(3 * i - 6)]);
-					if(i>=3) normals.push_back(normals[normals.size()-(2)]);
-
-					triPoints.push_back(allPoints[pointIndex]);
-					texCoords.push_back(texIndex >= 0? allTexCoords[texIndex] : float2(0,0));
-					normals.push_back(normIndex >= 0? allNormals[normIndex] : float3(0,0,0));
-				}
-
-			}
-		} 
-		return {triPoints, texCoords, normals};
-	}
-
-
-
-
-};
 
 
 class Scene {
@@ -745,6 +764,11 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 			float3 point1pre = m.VertexToView(m.triPoints.at(i),  cam);
 			float3 point2pre = m.VertexToView(m.triPoints.at(i+1), cam);
 			float3 point3pre = m.VertexToView(m.triPoints.at(i+2), cam);
+
+			float3 point1world = m.ToWorldPoint(m.triPoints.at(i));
+			float3 point2world = m.ToWorldPoint(m.triPoints.at(i+1));
+			float3 point3world = m.ToWorldPoint(m.triPoints.at(i+2));
+
 			//if(point1.z <= 0 || point2.z <= 0 || point3.z <= 0) continue;
 			//
 			float3 points[6];
@@ -979,6 +1003,14 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 	SDL_UnlockSurface(surface);
 }
 
+void initialiseModel(Model * model, const char* modelFilename, void (*sampleType)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
+	std::string objstr = "";
+	std::ifstream objfile(modelFilename);
+	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
+	model->init(LoadObjFile(objstr), sampleType);
+	objfile.close();
+}
+
 int main(int argc, char**argv) {
 	constexpr int frameRate = 30;
 	constexpr float targetFrameTime = 1000.f/frameRate;
@@ -1008,11 +1040,7 @@ int main(int argc, char**argv) {
 	Uint32 *pixels;
 	void* pix;
 	int pitch;
-	std::vector<float2> currentFace;
-	Model objLoader;
-	Camera cam;
-	cam.fov = 1;
-	Model m;
+	cam.fov = toRadians(90);
 	m.scale = {5,5,5};
 	Model c;
 
@@ -1024,24 +1052,26 @@ int main(int argc, char**argv) {
 
 	SDL_Rect mouseRect = {SCR_WIDTH/2, SCR_HEIGHT/2, 3, 3};
 	c.parent = &m;
-	cam.parent = &m;
 
 
 	//std::vector<Model> models;
 	//m.position.z = 10;
 	//m.position.y = -10;
-	std::string objstr = "";
+	/*std::string objstr = "";
 	std::ifstream objfile("stars.obj");
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
-	c.init(objLoader.LoadObjFile(objstr), modelSamples::noLightingAtPoint);
-	objfile.close();
+	c.init(LoadObjFile(objstr), modelSamples::noLightingAtPoint);
+	objfile.close();*/
 
-	objfile.open("resources/earth.obj");
+	/*objfile.open("skysub.obj");
 	objstr = "";
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
-	m.init(objLoader.LoadObjFile(objstr), modelSamples::smoothLightingAtPoint);
+	m.init(LoadObjFile(objstr), modelSamples::smoothLightingAtPoint);
 
-	objfile.close();
+	objfile.close();*/
+
+	initialiseModel(&m, "resources/earth.obj", modelSamples::smoothLightingAtPoint);
+	initialiseModel(&c, "stars.obj", modelSamples::noLightingAtPoint);
 
 	#if SDLIMG == 1
 	uvtex = IMG_Load(argv[2]);
@@ -1185,7 +1215,7 @@ int main(int argc, char**argv) {
 			}
 
 		}
-		m.roll+=0.01;
+		//m.roll+=0.01;
 		m.UpdateRotation();
 		//m.position.z += sin(frameCount*0.1)*0.01;
 		/*if(keyDown[D]) {
@@ -1263,6 +1293,19 @@ int main(int argc, char**argv) {
 		}
 		if(keyDown[PERIOD]) {
 			cam.fov-=toRadians(1);
+		}
+
+		if(keyDown[LEFT]) {
+			m.position.x-=0.1;
+		}
+		if(keyDown[RIGHT]) {
+			m.position.x+=0.1;
+		}
+		if(keyDown[UP]) {
+			m.position.y-=0.1;
+		}
+		if(keyDown[DOWN]) {
+			m.position.y+=0.1;
 		}
 
 			
