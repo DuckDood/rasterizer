@@ -1011,6 +1011,29 @@ void initialiseModel(Model * model, const char* modelFilename, void (*sampleType
 	objfile.close();
 }
 
+SDL_Texture * createScreen(SDL_Renderer* renderer) {
+       SDL_Texture * tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, SCR_WIDTH, SCR_HEIGHT);
+       SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
+       return tex;
+};
+
+float* createDepthBuffer() {
+       static float buffer[SCR_WIDTH * SCR_HEIGHT];
+       return buffer;
+}
+
+void clearBuffers(Uint32* pixels, float* depthBuffer) {
+	#pragma omp parallel for
+	for(unsigned int y = 0; y<SCR_HEIGHT; y++) {
+		#pragma omp parallel for
+		for(unsigned int x = 0; x<SCR_WIDTH; x++) {
+			pixels[y*SCR_WIDTH + x] = RGBToBin(0, 0, 0);
+			depthBuffer[y*SCR_WIDTH + x] = std::numeric_limits<double>::infinity();
+		}
+	}
+}
+
+
 int main(int argc, char**argv) {
 	constexpr int frameRate = 30;
 	constexpr float targetFrameTime = 1000.f/frameRate;
@@ -1034,8 +1057,7 @@ int main(int argc, char**argv) {
 
 	bool running = true;
 	SDL_Event event;
-	SDL_Texture* screenTex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, SCR_WIDTH, SCR_HEIGHT);
-	SDL_SetTextureScaleMode(screenTex, SDL_SCALEMODE_NEAREST);
+	SDL_Texture* screenTex = createScreen(renderer);
 	SDL_Surface * uvtex;
 	Uint32 *pixels;
 	void* pix;
@@ -1084,7 +1106,7 @@ int main(int argc, char**argv) {
 	int s = m.triPoints.size();
 	int s2 = c.triPoints.size();
 	float2 screen = float2(SCR_WIDTH, SCR_HEIGHT);
-	float depthBuffer[SCR_WIDTH * SCR_HEIGHT];
+	float* depthBuffer = createDepthBuffer();
 	enum keys{
 		W = 0,
 		A = 1,
@@ -1318,14 +1340,7 @@ int main(int argc, char**argv) {
 		SDL_LockTexture(screenTex, NULL, &pix, &pitch);
 		pixels = (Uint32*)pix;
 		
-		#pragma omp parallel for
-		for(unsigned int y = 0; y<SCR_HEIGHT; y++) {
-			#pragma omp parallel for
-			for(unsigned int x = 0; x<SCR_WIDTH; x++) {
-				pixels[y*SCR_WIDTH + x] = RGBToBin(0, 0, 0);
-				depthBuffer[y*SCR_WIDTH + x] = std::numeric_limits<double>::infinity();
-			}
-		}
+		clearBuffers(pixels, depthBuffer);
 		
 
 		//#pragma omp parallel for
