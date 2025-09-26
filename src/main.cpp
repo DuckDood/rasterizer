@@ -15,10 +15,10 @@
 #if SDLIMG == 1
 #include <SDL3_image/SDL_image.h>
 #endif
-//#define SCR_HEIGHT 720
-//#define SCR_WIDTH 1280
-#define SCR_HEIGHT 540
-#define SCR_WIDTH 960
+#define SCR_HEIGHT 720
+#define SCR_WIDTH 1280
+//#define SCR_HEIGHT 540
+//#define SCR_WIDTH 960
 //#define SCR_HEIGHT 480
 //#define SCR_WIDTH 640
 //#define SCR_HEIGHT 240
@@ -225,7 +225,6 @@ class Transform {
 	float yaw = 0;
 	float roll = 0;
 	float3 position = {0,0,0};
-	float3 center = {0,0,0};
 	float3 scale = {1,1,1};
 
 	float3 ihat, khat, jhat;
@@ -273,14 +272,30 @@ class Transform {
 		float3 khat_inverse = float3(ihat.z, jhat.z, khat.z);
 		return {ihat_inverse, jhat_inverse, khat_inverse};
 	}
+	float3 ApplyRotationVectors(float3 p) {
+		//auto [ihat, jhat, khat] = GetBasisVectors();
+		float3 world = TransformVector(ihat, jhat, khat, p);
+		if(parent != NULL) world = parent->ApplyRotationVectors(world);
+		return world;
+	}
 
 	float3 ToWorldPoint(float3 p) {
 		//auto [ihat, jhat, khat] = GetBasisVectors();
+		if(parent != NULL) {
+			scale.x = -scale.x;
+			scale.y = -scale.y;
+			scale.z = -scale.z;
+		}
 		float3 ihatT = ihat * scale.x;
 		float3 jhatT = jhat * scale.y;
 		float3 khatT = khat * scale.z;
-		float3 world = TransformVector(ihatT, jhatT, khatT, p + center) + position;
+		float3 world = TransformVector(ihatT, jhatT, khatT, p) + position;
 		if(parent != NULL) world = parent->ToWorldPoint(world);
+		if(parent != NULL) {
+			scale.x = -scale.x;
+			scale.y = -scale.y;
+			scale.z = -scale.z;
+		}
 		return world;
 	}
 	float3 ToLocalPoint(float3 worldPoint) {
@@ -495,11 +510,11 @@ class Model : public Transform {
 	//float roll = 0;
 	//float3 position;
 	//std::vector<std::vector<float3>> faces;
-	void (*sample)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b);
+	void (*sample)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model);
 	std::vector<float3> triPoints;
 	std::vector<float2> texCoords;
 	std::vector<float3> normals;
-	Model(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
+	Model(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model)) {
 		auto [tri, tex, norm] = data;
 		triPoints = tri;
 		texCoords = tex;
@@ -508,7 +523,7 @@ class Model : public Transform {
 		UpdateRotation();
 
 	}
-	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
+	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* m)) {
 		auto [tri, tex, norm] = data;
 		triPoints = tri;
 		texCoords = tex;
@@ -568,37 +583,41 @@ class Model : public Transform {
 
 
 };
-Model m;
-	Camera cam;
+
 
 namespace modelSamples {
 	// i used gemini for help here but i didnt straight copy paste code
-	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b) {
-
+	// that comment is from a earlier thing that didnt get commited because the logic didnt work
+	// man i wonder why
+	// maybe its because theyve also said that the difference between 1993 and 1996 is five years
+	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model) {
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
-		float3 normal = {0,0,0};
 
 		float depthX = 1/depths.x;
 		float depthY = 1/depths.y;
 		float depthZ = 1/depths.z;
 
-		normal = normal + (norms[index] * depthX) * weights.x;
-		normal = normal + (norms[index+1] * depthY) * weights.y;
-		normal = normal + (norms[index+2] *  depthZ) * weights.z;
-		normal = normal * depth;
-		normal = Normalize(normal);
-		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
-		//
-		float lightLevel = (1+Dot3(normal, {0,1,0})) * 0.5;
-		float3 l = float3(1,1,1) * lightLevel;
-		
-		//if(sr) {
 		float2 texCoord = {0,0};
 		texCoord = texCoord + (coords[index] * depthX) * weights.x;
 		texCoord = texCoord + (coords[index+1] * depthY) * weights.y;
 		texCoord = texCoord + (coords[index+2] *  depthZ) * weights.z;
 
 		texCoord = texCoord * depth;
+
+		float3 normal = {0,0,0};
+
+		normal = normal + (norms[index] * depthX) * weights.x;
+		normal = normal + (norms[index+1] * depthY) * weights.y;
+		normal = normal + (norms[index+2] *  depthZ) * weights.z;
+		normal = normal * depth;
+		normal = Normalize(normal);
+		float3 lightDir = Normalize({0, 0, 1});
+		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
+		//
+		float lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
+		float3 l = float3(1,1,1) * lightLevel;
+		
+		//if(sr) {
 
 		SDL_ReadSurfacePixel(surface, floor(texCoord.x*surface->w), floor(texCoord.y*surface->h), r, g, b, NULL);
 		//sampleSurface(texCoord.x, texCoord.y, surface, r, g, b);
@@ -628,7 +647,7 @@ namespace modelSamples {
 		//g = fmin(255,l.y*255);//normal.y*255;
 		//b = fmin(255,l.z*255);//normal.z*255;
 	}
-	void jaggedLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b) {
+	void jaggedLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model) {
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
 		//float3 normal = {0,0,0};
 		//normal = normal + norms[index] / depths.x * weights.x;
@@ -637,8 +656,9 @@ namespace modelSamples {
 		//normal = normal * depth;
 		//normal = Normalize(normal);
 		float3 normal = Normalize((norms[index] + norms[index+1] + norms[index+2])*0.33);
+		float3 lightDir = Normalize({0, 0, 1});
 
-		float lightLevel = (1+Dot3(normal, {0,1,0}))*0.5;
+		float lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir))*0.5;
 		float3 l = float3(1,1,1) * lightLevel;
 		
 		//if(sr) {
@@ -678,7 +698,7 @@ namespace modelSamples {
 		//b = fmin(255,l.z*255);//normal.z*255;
 	}
 
-	void noLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b) {
+	void noLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* m) {
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
 		//if(sr) {
 		float2 texCoord = {0,0};
@@ -968,7 +988,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						g= fmin(255,g*l.y);
 						b= fmin(255,b*l.z);*/
 //void (*samp)(float3 weights, float3 depths, float depth, std::vector<float3> norms, std::vector<float2> coords, int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
-						m.sample(weights, depths, depth, norms, coords, index, surface, &r, &g, &b);
+						m.sample(weights, depths, depth, norms, coords, index, surface, &r, &g, &b, &m);
 						//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
 						//sampleSurface(texCoord.x, texCoord.y, surface, &r,&g,&b);
 
@@ -1003,7 +1023,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 	SDL_UnlockSurface(surface);
 }
 
-void initialiseModel(Model * model, const char* modelFilename, void (*sampleType)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
+void initialiseModel(Model * model, const char* modelFilename, void (*sampleType)(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model)) {
 	std::string objstr = "";
 	std::ifstream objfile(modelFilename);
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
@@ -1062,13 +1082,15 @@ int main(int argc, char**argv) {
 	Uint32 *pixels;
 	void* pix;
 	int pitch;
+	Model m;
+	Camera cam;
 	cam.fov = toRadians(90);
 	m.scale = {5,5,5};
 	Model c;
 
 	//c.position.z = 2;
-	m.position.y = 10;
-	m.position.z = 1;
+	//m.position.y = 10;
+	//m.position.z = 1;
 	//c.pitch = toRadians(90);
 	m.roll = 3.141;
 
@@ -1093,7 +1115,7 @@ int main(int argc, char**argv) {
 	objfile.close();*/
 
 	initialiseModel(&m, "resources/earth.obj", modelSamples::smoothLightingAtPoint);
-	initialiseModel(&c, "stars.obj", modelSamples::noLightingAtPoint);
+	initialiseModel(&c, "stars.obj", modelSamples::jaggedLightingAtPoint);
 
 	#if SDLIMG == 1
 	uvtex = IMG_Load(argv[2]);
@@ -1228,8 +1250,9 @@ int main(int argc, char**argv) {
 
 				case SDL_EVENT_MOUSE_MOTION:
 					float2 mouseDelta(event.motion.xrel / SCR_WIDTH * mouseSensitivity, event.motion.yrel / SCR_WIDTH * mouseSensitivity);
-					cam.pitch += Clamp(mouseDelta.y, -1.48353, 1.48353);
-					cam.yaw -=  mouseDelta.x;
+					cam.pitch += mouseDelta.y;
+					cam.yaw +=  mouseDelta.x;
+					cam.pitch = Clamp(cam.pitch, -1.5708, 1.5708);
 					cam.UpdateRotation();
 					break;
 
@@ -1237,7 +1260,7 @@ int main(int argc, char**argv) {
 			}
 
 		}
-		//m.roll+=0.01;
+		m.roll+=0.01;
 		m.UpdateRotation();
 		//m.position.z += sin(frameCount*0.1)*0.01;
 		/*if(keyDown[D]) {
@@ -1274,12 +1297,12 @@ int main(int argc, char**argv) {
 		//https://stackoverflow.com/questions/10569659/camera-pitch-yaw-to-direction-vector
 
 		if(keyDown[A]) {
-			cam.position.x -= cos(cam.yaw) * camSpeed;
-			cam.position.y -= sin(cam.yaw) * camSpeed;
-		}
-		if(keyDown[D]) {
 			cam.position.x += cos(cam.yaw) * camSpeed;
 			cam.position.y += sin(cam.yaw) * camSpeed;
+		}
+		if(keyDown[D]) {
+			cam.position.x -= cos(cam.yaw) * camSpeed;
+			cam.position.y -= sin(cam.yaw) * camSpeed;
 		}
 		float xzlen = cos(cam.pitch);
 		float y = xzlen * cos(cam.yaw);
@@ -1334,7 +1357,6 @@ int main(int argc, char**argv) {
 		
 
 		SDL_RenderClear(renderer);
-					cam.pitch = Clamp(cam.pitch, -1.5708, 1.5708);
 		//tris.clear();
 
 		SDL_LockTexture(screenTex, NULL, &pix, &pitch);
@@ -1433,7 +1455,7 @@ int main(int argc, char**argv) {
 		}*/
 		SDL_UnlockTexture(screenTex);
 
-		SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 0, NULL, SDL_FLIP_VERTICAL);
+		SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 180, NULL, SDL_FLIP_NONE);
 		SDL_SetRenderDrawColor(renderer, 255,0,0,255);
 		
 
