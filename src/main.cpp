@@ -15,14 +15,14 @@
 #if SDLIMG == 1
 #include <SDL3_image/SDL_image.h>
 #endif
-#define SCR_HEIGHT 720
-#define SCR_WIDTH 1280
+//#define SCR_HEIGHT 720
+//#define SCR_WIDTH 1280
 //#define SCR_HEIGHT 540
 //#define SCR_WIDTH 960
 //#define SCR_HEIGHT 480
 //#define SCR_WIDTH 640
-//#define SCR_HEIGHT 240
-//#define SCR_WIDTH 320
+#define SCR_HEIGHT 240
+#define SCR_WIDTH 320
 //#define SCR_HEIGHT 120
 //#define SCR_WIDTH 160
 // yeah its from sebastian lague
@@ -589,9 +589,10 @@ namespace modelSamples {
 	// i used gemini for help here but i didnt straight copy paste code
 	// that comment is from a earlier thing that didnt get commited because the logic didnt work
 	// man i wonder why
-	// maybe its because theyve also said that the difference between 1993 and 1996 is five years
-	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[6], float2 coords[6], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model) {
-		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
+	// maybe its because its also said that the difference between 1993 and 1996 is five years
+	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[3], float2 coords[3], int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model) {
+		index = 0;
+		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trusts them references their syntax make me unsure
 
 		float depthX = 1/depths.x;
 		float depthY = 1/depths.y;
@@ -611,11 +612,43 @@ namespace modelSamples {
 		normal = normal + (norms[index+2] *  depthZ) * weights.z;
 		normal = normal * depth;
 		normal = Normalize(normal);
-		float3 lightDir = Normalize({0, 0, 1});
+
+		float3 lightPosition = float3(0, 0, 1);
+
+		float3 dir;
+		float3 lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doinng slightly more work and basing it on vertex positions
+		dir.x = fabs(dir.x);
+		dir.y = fabs(dir.y);
+		dir.z = fabs(dir.z);
+		float level = 1/sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z + dir.z); // chat should i use the quake 3 algorithm
+		float strength = 1;
+		level *= strength;
 		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
 		//
 		float lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
-		float3 l = float3(1,1,1) * lightLevel;
+		float3 l = float3(level,level,level) * lightLevel;
+
+
+
+		lightPosition = float3(2, 0, 0);
+
+		lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doinng slightly more work and basing it on vertex positions
+		dir.x = fabs(dir.x);
+		dir.y = fabs(dir.y);
+		dir.z = fabs(dir.z);
+		level = 1/sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z + dir.z); // chat should i use the quake 3 algorithm
+		strength = 1;
+		level *= strength;
+		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
+		//
+		lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
+		l =l + ( float3(level,level,level) * lightLevel);
+
+
+
+		// directional lighting from the sun which is a mess so im commenting it out
+		/*lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), {0,0,1})) * 0.5;
+		l = l + float3(1,1,1) * lightLevel;*/
 		
 		//if(sr) {
 
@@ -656,10 +689,20 @@ namespace modelSamples {
 		//normal = normal * depth;
 		//normal = Normalize(normal);
 		float3 normal = Normalize((norms[index] + norms[index+1] + norms[index+2])*0.33);
-		float3 lightDir = Normalize({0, 0, 1});
 
-		float lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir))*0.5;
-		float3 l = float3(1,1,1) * lightLevel;
+		float3 lightPosition = float3(0, 0, 1);
+
+		float3 dir;
+		float3 lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doinng slightly more work and basing it on vertex positions
+		float level = 1/sqrt(dir.x * dir.x + dir.y * dir.y + dir.z + dir.z);
+		float strength = 1;
+		level *= strength;
+		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
+		//
+		float lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
+		float3 l = float3(level,level,level) * lightLevel;
+		/*lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), {0,0,1})) * 0.5;
+		l = l + float3(1,1,1) * lightLevel;*/
 		
 		//if(sr) {
 		float2 texCoord = {0,0};
@@ -988,7 +1031,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						g= fmin(255,g*l.y);
 						b= fmin(255,b*l.z);*/
 //void (*samp)(float3 weights, float3 depths, float depth, std::vector<float3> norms, std::vector<float2> coords, int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
-						m.sample(weights, depths, depth, norms, coords, index, surface, &r, &g, &b, &m);
+						m.sample(weights, depths, depth, norms+index, coords+index, index, surface, &r, &g, &b, &m);
 						//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
 						//sampleSurface(texCoord.x, texCoord.y, surface, &r,&g,&b);
 
@@ -1085,7 +1128,7 @@ int main(int argc, char**argv) {
 	Model m;
 	Camera cam;
 	cam.fov = toRadians(90);
-	m.scale = {5,5,5};
+	//m.scale = {5,5,5};
 	Model c;
 
 	//c.position.z = 2;
@@ -1401,6 +1444,13 @@ int main(int argc, char**argv) {
 		}*/
 		//m.UpdateRotation();
 		RenderModel(m, cam, screen, pixels, depthBuffer, uvtex);
+		Model s = m;
+		s.position = {0,0,1};
+		s.scale = {0.2, 0.2 ,0.2};
+		RenderModel(s, cam, screen, pixels, depthBuffer, NULL);
+		s.position = {2,0,0};
+		s.scale = {0.2, 0.2 ,0.2};
+		RenderModel(s, cam, screen, pixels, depthBuffer, NULL);
 		RenderModel(c, cam, screen, pixels, depthBuffer, NULL);
 		//RenderModel(c, s2, cam, screen, pixels, depthBuffer, col);
 		/*#pragma omp parallel for
