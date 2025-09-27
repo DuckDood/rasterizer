@@ -14,7 +14,7 @@ ifndef SDLIMG
 SDLIMG := 1
 endif
 obj/main.o: src/main.cpp
-	${CXX} src/main.cpp -c -o obj/main.o -DSDLIMG=${SDLIMG}  -O2 -pg
+	${CXX} src/main.cpp -c -o obj/main.o -DSDLIMG=${SDLIMG}  -O2 -pg 
 
 build/raster: obj/main.o
 ifeq (${SDLIMG},1)

@@ -602,6 +602,48 @@ class Model : public Transform {
 };
 
 
+float3 applyLighting(std::vector<lightData> lightInfo, float3 normal, Model* model) {
+		static float3 lightPosition;
+
+		static float3 dir;
+		static float3 lightDir;
+
+		static float level;
+		static float strength;
+		static float lightLevel;
+		float3 l = {0,0,0};
+
+		for(int i = 0; i < lightInfo.size(); i++) {
+			lightPosition = lightInfo.at(i).vector;
+
+			//if(lightInfo.at(i).type == lightData::point) {
+			// its an enum of 1 or 0 so i can just check it directly
+			if(lightInfo.at(i).type) {
+				lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doing slightly more work and basing it on vertex positions
+																					  // actually, its a lot harder to convert it with vertex positions because NEAR PLANE CLIPPING DOIFJISODJFSJDFO
+				dir.x = fabs(dir.x);
+				dir.y = fabs(dir.y);
+				dir.z = fabs(dir.z);
+				level = 1/sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z + dir.z); // chat should i use the quake 3 algorithm
+				strength = lightInfo.at(i).strength;
+				level *= strength;
+			//} else if(lightInfo.at(i).type == lightData::directional) {
+			// theres only 2 values so like
+			} else {
+
+				lightDir = Normalize(lightPosition);
+				strength = lightInfo.at(i).strength;
+				level = strength;
+			}
+
+			lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
+			l = l + (float3(level,level,level) * lightLevel);
+				
+		}
+
+		return l;
+}
+
 
 namespace modelSamples {
 	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, vertData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model, std::vector<lightData> lightInfo) {
@@ -628,7 +670,7 @@ namespace modelSamples {
 		normal = Normalize(normal);
 
 
-		float3 lightPosition;
+		/*float3 lightPosition;
 
 		float3 dir;
 		float3 lightDir;
@@ -662,7 +704,9 @@ namespace modelSamples {
 		lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
 		l = l + (float3(level,level,level) * lightLevel);
 			
-		}
+		}*/
+
+		float3 l = applyLighting(lightInfo, normal, model);
 
 
 		// directional lighting from the sun which is a mess so im commenting it out
@@ -721,43 +765,9 @@ namespace modelSamples {
 		float lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
 		float3 l = float3(level,level,level) * lightLevel;*/
 
-		float3 lightPosition;
-
-		float3 dir;
-		float3 lightDir;
-																			  // actually, its a lot harder to convert it with vertex positions because NEAR PLANE CLIPPING DOIFJISODJFSJDFO
-		float level;
-		float strength;
-		
-		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
-		//
-		float lightLevel;
-		float3 l = {0,0,0};
-
-		for(int i = 0; i < lightInfo.size(); i++) {
-		lightPosition = lightInfo.at(i).vector;
-
-		if(lightInfo.at(i).type == lightData::point) {
-			lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doinng slightly more work and basing it on vertex positions
-																				  // actually, its a lot harder to convert it with vertex positions because NEAR PLANE CLIPPING DOIFJISODJFSJDFO
-			dir.x = fabs(dir.x);
-			dir.y = fabs(dir.y);
-			dir.z = fabs(dir.z);
-			level = 1/sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z + dir.z); // chat should i use the quake 3 algorithm
-			strength = lightInfo.at(i).strength;
-			level *= strength;
-		} else if(lightInfo.at(i).type == lightData::directional) {
-			lightDir = Normalize(lightPosition);
-			strength = lightInfo.at(i).strength;
-			level = strength;
-		}
-
-		lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
-		l = l + (float3(level,level,level) * lightLevel);
-			
-		}
 		/*lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), {0,0,1})) * 0.5;
 		l = l + float3(1,1,1) * lightLevel;*/
+		float3 l = applyLighting(lightInfo, normal, model);
 		
 		//if(sr) {
 		float2 texCoord = {0,0};
@@ -1227,7 +1237,7 @@ int main(int argc, char**argv) {
 	objfile.close();*/
 
 	initialiseModel(&m, "resources/earth.obj", modelSamples::smoothLightingAtPoint);
-	initialiseModel(&c, "stars.obj", modelSamples::jaggedLightingAtPoint);
+	initialiseModel(&c, "stars.obj", modelSamples::noLightingAtPoint);
 
 	#if SDLIMG == 1
 	uvtex = IMG_Load(argv[2]);
