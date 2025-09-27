@@ -499,9 +499,18 @@ class Camera : public Transform {
 	const Transform* parent = NULL;
 };
 
-struct lightData {
+struct vertData {
 	float3 norms[3];
 	float2 coords[3];
+};
+struct lightData {
+	enum types {
+		directional = 0,
+		point = 1,
+	};
+	float3 vector;
+	float strength;
+	bool type;
 };
 
 class Model : public Transform {
@@ -515,11 +524,11 @@ class Model : public Transform {
 	//float roll = 0;
 	//float3 position;
 	//std::vector<std::vector<float3>> faces;
-	void (*sample)(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model);
+	void (*sample)(float3 weights, float3 depths, float depth, vertData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model, std::vector<lightData> lightInfo);
 	std::vector<float3> triPoints;
 	std::vector<float2> texCoords;
 	std::vector<float3> normals;
-	Model(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model)) {
+	Model(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, vertData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model, std::vector<lightData> lightInfo)) {
 		auto [tri, tex, norm] = data;
 		triPoints = tri;
 		texCoords = tex;
@@ -528,7 +537,7 @@ class Model : public Transform {
 		UpdateRotation();
 
 	}
-	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* m)) {
+	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, vertData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* m, std::vector<lightData> lightInfo)) {
 		auto [tri, tex, norm] = data;
 		triPoints = tri;
 		texCoords = tex;
@@ -595,7 +604,7 @@ class Model : public Transform {
 
 
 namespace modelSamples {
-	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model) {
+	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, vertData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model, std::vector<lightData> lightInfo) {
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trusts them references their syntax make me unsure
 
 
@@ -619,21 +628,41 @@ namespace modelSamples {
 		normal = Normalize(normal);
 
 
-		float3 lightPosition = float3(0, 0, 1);
+		float3 lightPosition;
 
 		float3 dir;
-		float3 lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doinng slightly more work and basing it on vertex positions
+		float3 lightDir;
 																			  // actually, its a lot harder to convert it with vertex positions because NEAR PLANE CLIPPING DOIFJISODJFSJDFO
-		dir.x = fabs(dir.x);
-		dir.y = fabs(dir.y);
-		dir.z = fabs(dir.z);
-		float level = 1/sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z + dir.z); // chat should i use the quake 3 algorithm
-		float strength = 1;
-		level *= strength;
+		float level;
+		float strength;
+		
 		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
 		//
-		float lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
-		float3 l = float3(level,level,level) * lightLevel;
+		float lightLevel;
+		float3 l = {0,0,0};
+
+		for(int i = 0; i < lightInfo.size(); i++) {
+		lightPosition = lightInfo.at(i).vector;
+
+		if(lightInfo.at(i).type == lightData::point) {
+			lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doinng slightly more work and basing it on vertex positions
+																				  // actually, its a lot harder to convert it with vertex positions because NEAR PLANE CLIPPING DOIFJISODJFSJDFO
+			dir.x = fabs(dir.x);
+			dir.y = fabs(dir.y);
+			dir.z = fabs(dir.z);
+			level = 1/sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z + dir.z); // chat should i use the quake 3 algorithm
+			strength = lightInfo.at(i).strength;
+			level *= strength;
+		} else if(lightInfo.at(i).type == lightData::directional) {
+			lightDir = Normalize(lightPosition);
+			strength = lightInfo.at(i).strength;
+			level = strength;
+		}
+
+		lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
+		l = l + (float3(level,level,level) * lightLevel);
+			
+		}
 
 
 		// directional lighting from the sun which is a mess so im commenting it out
@@ -670,7 +699,7 @@ namespace modelSamples {
 		//g = fmin(255,l.y*255);//normal.y*255;
 		//b = fmin(255,l.z*255);//normal.z*255;
 	}
-	void jaggedLightingAtPoint(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model) {
+	void jaggedLightingAtPoint(float3 weights, float3 depths, float depth, vertData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model, std::vector<lightData> lightInfo) {
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
 		//float3 normal = {0,0,0};
 		//normal = normal + norms[index] / depths.x * weights.x;
@@ -680,7 +709,7 @@ namespace modelSamples {
 		//normal = Normalize(normal);
 		float3 normal = Normalize((data.norms[0] + data.norms[0+1] + data.norms[0+2])*0.33);
 
-		float3 lightPosition = float3(0, 0, 1);
+		/*float3 lightPosition = float3(0, 0, 1);
 
 		float3 dir;
 		float3 lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doinng slightly more work and basing it on vertex positions
@@ -690,7 +719,43 @@ namespace modelSamples {
 		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
 		//
 		float lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
-		float3 l = float3(level,level,level) * lightLevel;
+		float3 l = float3(level,level,level) * lightLevel;*/
+
+		float3 lightPosition;
+
+		float3 dir;
+		float3 lightDir;
+																			  // actually, its a lot harder to convert it with vertex positions because NEAR PLANE CLIPPING DOIFJISODJFSJDFO
+		float level;
+		float strength;
+		
+		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
+		//
+		float lightLevel;
+		float3 l = {0,0,0};
+
+		for(int i = 0; i < lightInfo.size(); i++) {
+		lightPosition = lightInfo.at(i).vector;
+
+		if(lightInfo.at(i).type == lightData::point) {
+			lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doinng slightly more work and basing it on vertex positions
+																				  // actually, its a lot harder to convert it with vertex positions because NEAR PLANE CLIPPING DOIFJISODJFSJDFO
+			dir.x = fabs(dir.x);
+			dir.y = fabs(dir.y);
+			dir.z = fabs(dir.z);
+			level = 1/sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z + dir.z); // chat should i use the quake 3 algorithm
+			strength = lightInfo.at(i).strength;
+			level *= strength;
+		} else if(lightInfo.at(i).type == lightData::directional) {
+			lightDir = Normalize(lightPosition);
+			strength = lightInfo.at(i).strength;
+			level = strength;
+		}
+
+		lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
+		l = l + (float3(level,level,level) * lightLevel);
+			
+		}
 		/*lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), {0,0,1})) * 0.5;
 		l = l + float3(1,1,1) * lightLevel;*/
 		
@@ -731,7 +796,7 @@ namespace modelSamples {
 		//b = fmin(255,l.z*255);//normal.z*255;
 	}
 
-	void noLightingAtPoint(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* m) {
+	void noLightingAtPoint(float3 weights, float3 depths, float depth, vertData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* m, std::vector<lightData> lightInfo) {
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
 		//if(sr) {
 		float2 texCoord = {0,0};
@@ -801,7 +866,7 @@ inline float2 Lerp2(float2 a, float2 b, float t){
 }
 
 
-void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depthBuffer[], SDL_Surface * surface = NULL) {
+void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depthBuffer[], SDL_Surface * surface = NULL, std::vector<lightData> lightInfo = {{{0,0,1}, 1, lightData::directional}}) {
 	SDL_LockSurface(surface);
 	
 		// stands for "surface real" trust
@@ -1021,7 +1086,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						g= fmin(255,g*l.y);
 						b= fmin(255,b*l.z);*/
 //void (*samp)(float3 weights, float3 depths, float depth, std::vector<float3> norms, std::vector<float2> coords, int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
-						lightData data;
+						vertData data;
 						data.norms[0] = norms[0 + index];
 						data.norms[1] = norms[1 + index];
 						data.norms[2] = norms[2 + index];
@@ -1030,7 +1095,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						data.coords[1] = coords[1 + index];
 						data.coords[2] = coords[2 + index];
 
-						m.sample(weights, depths, depth, data, surface, &r, &g, &b, &m);
+						m.sample(weights, depths, depth, data, surface, &r, &g, &b, &m, lightInfo);
 						//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
 						//sampleSurface(texCoord.x, texCoord.y, surface, &r,&g,&b);
 
@@ -1065,7 +1130,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 	SDL_UnlockSurface(surface);
 }
 
-void initialiseModel(Model * model, const char* modelFilename, void (*sampleType)(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model)) {
+void initialiseModel(Model * model, const char* modelFilename, void (*sampleType)(float3 weights, float3 depths, float depth, vertData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model, std::vector<lightData> lightInfo)) {
 	std::string objstr = "";
 	std::ifstream objfile(modelFilename);
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
@@ -1102,6 +1167,11 @@ int main(int argc, char**argv) {
 
 	int realWinWidth;
 	int realWinHeight;
+
+	std::vector<lightData> lightInfo; 
+	lightInfo.push_back({{0,0,1}, 2, lightData::point});
+	lightInfo.push_back({{2,0,0}, 2, lightData::point});
+	lightInfo.push_back({{0,0,1}, 1, lightData::directional});
 
 	srand(time(0));
 	if(!SDL_Init(SDL_INIT_VIDEO)) {
@@ -1442,12 +1512,15 @@ int main(int argc, char**argv) {
 			}
 		}*/
 		//m.UpdateRotation();
-		RenderModel(m, cam, screen, pixels, depthBuffer, uvtex);
+		RenderModel(m, cam, screen, pixels, depthBuffer, uvtex, lightInfo);
 		Model s = m;
 		s.position = {0,0,1};
 		s.scale = {0.2, 0.2 ,0.2};
-		RenderModel(s, cam, screen, pixels, depthBuffer, NULL);
-		RenderModel(c, cam, screen, pixels, depthBuffer, NULL);
+		RenderModel(s, cam, screen, pixels, depthBuffer, NULL, lightInfo);
+		s.position = {2,0,0};
+		s.scale = {0.2, 0.2 ,0.2};
+		RenderModel(s, cam, screen, pixels, depthBuffer, NULL, lightInfo);
+		RenderModel(c, cam, screen, pixels, depthBuffer, NULL, lightInfo);
 		//RenderModel(c, s2, cam, screen, pixels, depthBuffer, col);
 		/*#pragma omp parallel for
 		for(int i = 0; i<s2; i+=3) {
