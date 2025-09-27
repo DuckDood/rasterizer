@@ -499,6 +499,11 @@ class Camera : public Transform {
 	const Transform* parent = NULL;
 };
 
+struct lightData {
+	float3 norms[3];
+	float2 coords[3];
+};
+
 class Model : public Transform {
 	public:
 	Model() {
@@ -510,11 +515,11 @@ class Model : public Transform {
 	//float roll = 0;
 	//float3 position;
 	//std::vector<std::vector<float3>> faces;
-	void (*sample)(float3 weights, float3 depths, float depth, float3 norms[3], float2 coords[3], SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model);
+	void (*sample)(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model);
 	std::vector<float3> triPoints;
 	std::vector<float2> texCoords;
 	std::vector<float3> normals;
-	Model(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[3], float2 coords[3], SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model)) {
+	Model(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model)) {
 		auto [tri, tex, norm] = data;
 		triPoints = tri;
 		texCoords = tex;
@@ -523,7 +528,7 @@ class Model : public Transform {
 		UpdateRotation();
 
 	}
-	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, float3 norms[3], float2 coords[3], SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* m)) {
+	void init(std::tuple<std::vector<float3>, std::vector<float2>, std::vector<float3>> data, void (*samp)(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* m)) {
 		auto [tri, tex, norm] = data;
 		triPoints = tri;
 		texCoords = tex;
@@ -562,7 +567,10 @@ class Model : public Transform {
 		float3 vertex_world = ToWorldPoint(vertex);
 		float3 vertex_view = cam.ToLocalPoint(vertex_world);
 		return vertex_view;
-
+	}
+	float3 ViewToWorld(float3 vertex, Camera cam) {
+		float3 vertex_world = cam.ToWorldPoint(vertex);
+		return vertex_world;
 	}
 
 	float3 ViewToScreen(float3 vertex_view, float2 numPixels, Camera cam) {
@@ -585,37 +593,37 @@ class Model : public Transform {
 };
 
 
+
 namespace modelSamples {
-	// i used gemini for help here but i didnt straight copy paste code
-	// that comment is from a earlier thing that didnt get commited because the logic didnt work
-	// man i wonder why
-	// maybe its because its also said that the difference between 1993 and 1996 is five years
-	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[3], float2 coords[3], SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model) {
+	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model) {
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trusts them references their syntax make me unsure
+
 
 		float depthX = 1/depths.x;
 		float depthY = 1/depths.y;
 		float depthZ = 1/depths.z;
 
 		float2 texCoord = {0,0};
-		texCoord = texCoord + (coords[0] * depthX) * weights.x;
-		texCoord = texCoord + (coords[0+1] * depthY) * weights.y;
-		texCoord = texCoord + (coords[0+2] *  depthZ) * weights.z;
+		texCoord = texCoord + (data.coords[0] * depthX) * weights.x;
+		texCoord = texCoord + (data.coords[0+1] * depthY) * weights.y;
+		texCoord = texCoord + (data.coords[0+2] *  depthZ) * weights.z;
 
 		texCoord = texCoord * depth;
 
 		float3 normal = {0,0,0};
 
-		normal = normal + (norms[0] * depthX) * weights.x;
-		normal = normal + (norms[0+1] * depthY) * weights.y;
-		normal = normal + (norms[0+2] *  depthZ) * weights.z;
+		normal = normal + (data.norms[0] * depthX) * weights.x;
+		normal = normal + (data.norms[0+1] * depthY) * weights.y;
+		normal = normal + (data.norms[0+2] *  depthZ) * weights.z;
 		normal = normal * depth;
 		normal = Normalize(normal);
+
 
 		float3 lightPosition = float3(0, 0, 1);
 
 		float3 dir;
 		float3 lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doinng slightly more work and basing it on vertex positions
+																			  // actually, its a lot harder to convert it with vertex positions because NEAR PLANE CLIPPING DOIFJISODJFSJDFO
 		dir.x = fabs(dir.x);
 		dir.y = fabs(dir.y);
 		dir.z = fabs(dir.z);
@@ -626,23 +634,6 @@ namespace modelSamples {
 		//
 		float lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
 		float3 l = float3(level,level,level) * lightLevel;
-
-
-
-		lightPosition = float3(2, 0, 0);
-
-		lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doinng slightly more work and basing it on vertex positions
-		dir.x = fabs(dir.x);
-		dir.y = fabs(dir.y);
-		dir.z = fabs(dir.z);
-		level = 1/sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z + dir.z); // chat should i use the quake 3 algorithm
-		strength = 1;
-		level *= strength;
-		//float3 normal = Normalize((m.normals[i] + m.normals[i+1] + m.normals[i+2])/3);
-		//
-		lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
-		l =l + ( float3(level,level,level) * lightLevel);
-
 
 
 		// directional lighting from the sun which is a mess so im commenting it out
@@ -679,7 +670,7 @@ namespace modelSamples {
 		//g = fmin(255,l.y*255);//normal.y*255;
 		//b = fmin(255,l.z*255);//normal.z*255;
 	}
-	void jaggedLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[3], float2 coords[3], SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model) {
+	void jaggedLightingAtPoint(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model) {
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
 		//float3 normal = {0,0,0};
 		//normal = normal + norms[index] / depths.x * weights.x;
@@ -687,7 +678,7 @@ namespace modelSamples {
 		//normal = normal + norms[index+2] /  depths.z * weights.z;
 		//normal = normal * depth;
 		//normal = Normalize(normal);
-		float3 normal = Normalize((norms[0] + norms[0+1] + norms[0+2])*0.33);
+		float3 normal = Normalize((data.norms[0] + data.norms[0+1] + data.norms[0+2])*0.33);
 
 		float3 lightPosition = float3(0, 0, 1);
 
@@ -705,9 +696,9 @@ namespace modelSamples {
 		
 		//if(sr) {
 		float2 texCoord = {0,0};
-		texCoord = texCoord + coords[0] / depths.x * weights.x;
-		texCoord = texCoord + coords[0+1] / depths.y * weights.y;
-		texCoord = texCoord + coords[0+2] /  depths.z * weights.z;
+		texCoord = texCoord + data.coords[0] / depths.x * weights.x;
+		texCoord = texCoord + data.coords[0+1] / depths.y * weights.y;
+		texCoord = texCoord + data.coords[0+2] /  depths.z * weights.z;
 
 		texCoord = texCoord * depth;
 
@@ -740,13 +731,13 @@ namespace modelSamples {
 		//b = fmin(255,l.z*255);//normal.z*255;
 	}
 
-	void noLightingAtPoint(float3 weights, float3 depths, float depth, float3 norms[3], float2 coords[3], SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* m) {
+	void noLightingAtPoint(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* m) {
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trust references they syntax make me unsure
 		//if(sr) {
 		float2 texCoord = {0,0};
-		texCoord = texCoord + coords[0] / depths.x * weights.x;
-		texCoord = texCoord + coords[0+1] / depths.y * weights.y;
-		texCoord = texCoord + coords[0+2] /  depths.z * weights.z;
+		texCoord = texCoord + data.coords[0] / depths.x * weights.x;
+		texCoord = texCoord + data.coords[0+1] / depths.y * weights.y;
+		texCoord = texCoord + data.coords[0+2] /  depths.z * weights.z;
 
 		texCoord = texCoord * depth;
 
@@ -1030,7 +1021,16 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						g= fmin(255,g*l.y);
 						b= fmin(255,b*l.z);*/
 //void (*samp)(float3 weights, float3 depths, float depth, std::vector<float3> norms, std::vector<float2> coords, int index, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b)) {
-						m.sample(weights, depths, depth, norms+index, coords+index, surface, &r, &g, &b, &m);
+						lightData data;
+						data.norms[0] = norms[0 + index];
+						data.norms[1] = norms[1 + index];
+						data.norms[2] = norms[2 + index];
+
+						data.coords[0] = coords[0 + index];
+						data.coords[1] = coords[1 + index];
+						data.coords[2] = coords[2 + index];
+
+						m.sample(weights, depths, depth, data, surface, &r, &g, &b, &m);
 						//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
 						//sampleSurface(texCoord.x, texCoord.y, surface, &r,&g,&b);
 
@@ -1065,7 +1065,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 	SDL_UnlockSurface(surface);
 }
 
-void initialiseModel(Model * model, const char* modelFilename, void (*sampleType)(float3 weights, float3 depths, float depth, float3 norms[3], float2 coords[3], SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model)) {
+void initialiseModel(Model * model, const char* modelFilename, void (*sampleType)(float3 weights, float3 depths, float depth, lightData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model)) {
 	std::string objstr = "";
 	std::ifstream objfile(modelFilename);
 	for(std::string line; std::getline(objfile, line); objstr+=line+"\n");
@@ -1445,9 +1445,6 @@ int main(int argc, char**argv) {
 		RenderModel(m, cam, screen, pixels, depthBuffer, uvtex);
 		Model s = m;
 		s.position = {0,0,1};
-		s.scale = {0.2, 0.2 ,0.2};
-		RenderModel(s, cam, screen, pixels, depthBuffer, NULL);
-		s.position = {2,0,0};
 		s.scale = {0.2, 0.2 ,0.2};
 		RenderModel(s, cam, screen, pixels, depthBuffer, NULL);
 		RenderModel(c, cam, screen, pixels, depthBuffer, NULL);
