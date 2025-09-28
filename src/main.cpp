@@ -158,13 +158,18 @@ bool inTriBounds(float2 a, float2 b, float2 c, float2 p) {
 	return p.x>=minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
 }
 
-Uint32 RGBToBin(int r, int g, int b) {
+inline Uint32 RGBToBin(int r, int g, int b) {
 	Uint32 tempC;
 	tempC = 0xff000000;
 	tempC += r << 16; 
 	tempC += g << 8; 
 	tempC += b << 0; 
 	return tempC;
+}
+void BinToRGB(Uint32 val, Uint8* r, Uint8* g, Uint8* b) {
+	*r = val >> 16 & 0x000000ff; 
+	*g = val >> 8 & 0x000000ff; 
+	*b = val >> 0 & 0x000000ff; 
 }
 
 
@@ -278,6 +283,12 @@ class Transform {
 		if(parent != NULL) world = parent->ApplyRotationVectors(world);
 		return world;
 	}
+	float3 ApplyInverseRotationVectors(float3 p) {
+		//auto [ihat, jhat, khat] = GetBasisVectors();
+		if(parent != NULL) p = parent->ApplyInverseRotationVectors(p);
+		float3 local = TransformVector(ihat_inv, jhat_inv, khat_inv, p);
+		return local;
+	}
 
 	float3 ToWorldPoint(float3 p) {
 		//auto [ihat, jhat, khat] = GetBasisVectors();
@@ -298,6 +309,8 @@ class Transform {
 		}
 		return world;
 	}
+
+
 	float3 ToLocalPoint(float3 worldPoint) {
 		//pitch += 1.5708;
 		//auto [ihat, jhat, khat] = GetInverseBasisVectors();
@@ -311,7 +324,7 @@ class Transform {
 
 		return local;
 	}
-	void UpdateRotation() {
+	void __attribute__((used)) UpdateRotation() {
 		auto [ihatTemp, jhatTemp, khatTemp] = GetBasisVectors();
 		auto [ihatInvTemp, jhatInvTemp, khatInvTemp] = GetInverseBasisVectors();
 
@@ -502,6 +515,8 @@ class Camera : public Transform {
 struct vertData {
 	float3 norms[3];
 	float2 coords[3];
+	float3 worldPoints[3];
+	float3 pointPos;
 };
 struct lightData {
 	enum types {
@@ -602,7 +617,7 @@ class Model : public Transform {
 };
 
 
-float3 applyLighting(std::vector<lightData> lightInfo, float3 normal, Model* model) {
+float3 applyLighting(std::vector<lightData> lightInfo, float3 normal, Model* model, vertData vertInfo) {
 		static float3 lightPosition;
 
 		static float3 dir;
@@ -619,7 +634,7 @@ float3 applyLighting(std::vector<lightData> lightInfo, float3 normal, Model* mod
 			//if(lightInfo.at(i).type == lightData::point) {
 			// its an enum of 1 or 0 so i can just check it directly
 			if(lightInfo.at(i).type) {
-				lightDir = Normalize((dir = lightPosition - model->position)); // close *enough* instead of doing slightly more work and basing it on vertex positions
+				lightDir = Normalize((dir = lightPosition - vertInfo.pointPos)); // close *enough* instead of doing slightly more work and basing it on vertex positions
 																					  // actually, its a lot harder to convert it with vertex positions because NEAR PLANE CLIPPING DOIFJISODJFSJDFO
 				dir.x = fabs(dir.x);
 				dir.y = fabs(dir.y);
@@ -636,7 +651,7 @@ float3 applyLighting(std::vector<lightData> lightInfo, float3 normal, Model* mod
 				level = strength;
 			}
 
-			lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
+			lightLevel = (1+Dot3(Normalize(normal), lightDir)) * 0.5;
 			l = l + (float3(level,level,level) * lightLevel);
 				
 		}
@@ -644,8 +659,8 @@ float3 applyLighting(std::vector<lightData> lightInfo, float3 normal, Model* mod
 		return l;
 }
 
-
 namespace modelSamples {
+	// idk vro
 	void smoothLightingAtPoint(float3 weights, float3 depths, float depth, vertData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model, std::vector<lightData> lightInfo) {
 		// btw i use pointers instead of references because 1. sdl uses pointers since its for c instead of c++ and 2. i dont trusts them references their syntax make me unsure
 
@@ -668,6 +683,10 @@ namespace modelSamples {
 		normal = normal + (data.norms[0+2] *  depthZ) * weights.z;
 		normal = normal * depth;
 		normal = Normalize(normal);
+
+
+		float3 pointPos = (data.worldPoints[0] + data.worldPoints[1] + data.worldPoints[2])*0.33;
+		data.pointPos=pointPos;
 
 
 		/*float3 lightPosition;
@@ -706,7 +725,8 @@ namespace modelSamples {
 			
 		}*/
 
-		float3 l = applyLighting(lightInfo, normal, model);
+		normal = model->ApplyRotationVectors(normal);
+		float3 l = applyLighting(lightInfo, normal, model, data);
 
 
 		// directional lighting from the sun which is a mess so im commenting it out
@@ -751,7 +771,14 @@ namespace modelSamples {
 		//normal = normal + norms[index+2] /  depths.z * weights.z;
 		//normal = normal * depth;
 		//normal = Normalize(normal);
+		float depthX = 1/depths.x;
+		float depthY = 1/depths.y;
+		float depthZ = 1/depths.z;
+
 		float3 normal = Normalize((data.norms[0] + data.norms[0+1] + data.norms[0+2])*0.33);
+
+		float3 pointPos = (data.worldPoints[0] + data.worldPoints[1] + data.worldPoints[2])*0.33;
+		data.pointPos=pointPos;
 
 		/*float3 lightPosition = float3(0, 0, 1);
 
@@ -767,15 +794,17 @@ namespace modelSamples {
 
 		/*lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), {0,0,1})) * 0.5;
 		l = l + float3(1,1,1) * lightLevel;*/
-		float3 l = applyLighting(lightInfo, normal, model);
+		normal = model->ApplyRotationVectors(normal);
+		float3 l = applyLighting(lightInfo, normal, model, data);
 		
 		//if(sr) {
 		float2 texCoord = {0,0};
-		texCoord = texCoord + data.coords[0] / depths.x * weights.x;
-		texCoord = texCoord + data.coords[0+1] / depths.y * weights.y;
-		texCoord = texCoord + data.coords[0+2] /  depths.z * weights.z;
+		texCoord = texCoord + (data.coords[0] * depthX) * weights.x;
+		texCoord = texCoord + (data.coords[0+1] * depthY) * weights.y;
+		texCoord = texCoord + (data.coords[0+2] *  depthZ) * weights.z;
 
 		texCoord = texCoord * depth;
+
 
 		SDL_ReadSurfacePixel(surface, floor(texCoord.x*surface->w), floor(texCoord.y*surface->h), r, g, b, NULL);
 		//sampleSurface(texCoord.x, texCoord.y, surface, r,g, b);
@@ -847,9 +876,6 @@ namespace modelSamples {
 
 
 
-class Scene {
-
-};
 
 float Clamp(float p, float low, float high) {
 	if( p<low) {
@@ -875,12 +901,9 @@ inline float2 Lerp2(float2 a, float2 b, float t){
 	return a + (b - a) * t;
 }
 
-
 void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depthBuffer[], SDL_Surface * surface = NULL, std::vector<lightData> lightInfo = {{{0,0,1}, 1, lightData::directional}}) {
 	SDL_LockSurface(surface);
 	
-		// stands for "surface real" trust
-		//bool sr = true;
 		if(surface == NULL) {
 				surface = SDL_CreateSurface(2, 2, SDL_PIXELFORMAT_ABGR32);
 				SDL_FillSurfaceRect(surface, NULL, 0xffffffff);
@@ -917,6 +940,8 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 			float3 point3;
 
 			int triCount = 0;
+			float fracA, fracB;
+			// a lot copy pasted from sebastian lagues code
 			switch (clipCount) {
 				case 0:
 				points[0] = point1pre;
@@ -939,8 +964,8 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 				float3 pointA = vpoints[indexNext];
 				float3 pointB = vpoints[indexPrev];
 
-				float fracA = (nearClipDist - pointClipped.z) / (pointA.z - pointClipped.z);
-				float fracB = (nearClipDist - pointClipped.z) / (pointB.z - pointClipped.z);
+				/*float*/ fracA = (nearClipDist - pointClipped.z) / (pointA.z - pointClipped.z);
+				/*float*/ fracB = (nearClipDist - pointClipped.z) / (pointB.z - pointClipped.z);
 
 				float3 clipAlongA = Lerp3(pointClipped, pointA, fracA);
 				float3 clipAlongB = Lerp3(pointClipped, pointB, fracB);
@@ -1105,6 +1130,10 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						data.coords[1] = coords[1 + index];
 						data.coords[2] = coords[2 + index];
 
+						data.worldPoints[0] = point1world;
+						data.worldPoints[1] = point2world;
+						data.worldPoints[2] = point3world;
+
 						m.sample(weights, depths, depth, data, surface, &r, &g, &b, &m, lightInfo);
 						//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
 						//sampleSurface(texCoord.x, texCoord.y, surface, &r,&g,&b);
@@ -1129,6 +1158,7 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						//g = fmin(255,l.y*255);//normal.y*255;
 						//b = fmin(255,l.z*255);//normal.z*255;
 						//}
+						
 						pixels[(y)*SCR_WIDTH + x] = RGBToBin(r,g,b);
 						depthBuffer[(y)*SCR_WIDTH + x] = depth;
 					}
@@ -1139,6 +1169,19 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 
 	SDL_UnlockSurface(surface);
 }
+class Scene {
+	public:
+	Camera* cam;
+	std::vector<Model*> models;
+	std::vector<SDL_Surface*> textures;
+	std::vector<lightData> lightInfo;
+};
+
+void RenderScene(Scene scene, float2 screen, Uint32* pixels, float depthBuffer[]) {
+	for(int i = 0; i<scene.models.size(); i++) {
+		RenderModel(*scene.models.at(i), *scene.cam, screen, pixels, depthBuffer, scene.textures.at(i), scene.lightInfo);
+	}
+};
 
 void initialiseModel(Model * model, const char* modelFilename, void (*sampleType)(float3 weights, float3 depths, float depth, vertData data, SDL_Surface * surface, Uint8 * r, Uint8 * g, Uint8 * b, Model* model, std::vector<lightData> lightInfo)) {
 	std::string objstr = "";
@@ -1179,9 +1222,8 @@ int main(int argc, char**argv) {
 	int realWinHeight;
 
 	std::vector<lightData> lightInfo; 
-	lightInfo.push_back({{0,0,1}, 2, lightData::point});
+	lightInfo.push_back({{0,0.5,1}, 2, lightData::point});
 	lightInfo.push_back({{2,0,0}, 2, lightData::point});
-	lightInfo.push_back({{0,0,1}, 1, lightData::directional});
 
 	srand(time(0));
 	if(!SDL_Init(SDL_INIT_VIDEO)) {
@@ -1206,6 +1248,7 @@ int main(int argc, char**argv) {
 	int pitch;
 	Model m;
 	Camera cam;
+	cam.position.y = -2;
 	cam.fov = toRadians(90);
 	//m.scale = {5,5,5};
 	Model c;
@@ -1236,19 +1279,40 @@ int main(int argc, char**argv) {
 
 	objfile.close();*/
 
-	initialiseModel(&m, "resources/earth.obj", modelSamples::smoothLightingAtPoint);
-	initialiseModel(&c, "stars.obj", modelSamples::noLightingAtPoint);
-
 	#if SDLIMG == 1
 	uvtex = IMG_Load(argv[2]);
 	#else
 	uvtex = SDL_LoadBMP(argv[2]);
 	#endif
 
+	Scene scene;
+
+	Model s;
+	s.scale = {0.2,0.2,0.2};
+	s.position = {2, 0, 0};
+	Model s2;
+	s2.scale = {0.2,0.2,0.2};
+	s2.position = {0, 0, 1};
+
+	initialiseModel(&m, "resources/earth.obj", modelSamples::smoothLightingAtPoint);
+	initialiseModel(&s, "resources/earth.obj", modelSamples::noLightingAtPoint);
+	initialiseModel(&s2, "resources/earth.obj", modelSamples::noLightingAtPoint);
+	initialiseModel(&c, "stars.obj", modelSamples::noLightingAtPoint);
+	scene.models.push_back(&m);
+	scene.models.push_back(&c);
+	scene.models.push_back(&s);
+	scene.models.push_back(&s2);
+	scene.lightInfo = lightInfo;
+	scene.cam = &cam;
+
+	scene.textures.push_back(uvtex);
+	scene.textures.push_back(NULL);
+	scene.textures.push_back(NULL);
+	scene.textures.push_back(NULL);
+
+
 
 	int frameCount = 0;
-	int s = m.triPoints.size();
-	int s2 = c.triPoints.size();
 	float2 screen = float2(SCR_WIDTH, SCR_HEIGHT);
 	float* depthBuffer = createDepthBuffer();
 	enum keys{
@@ -1522,6 +1586,9 @@ int main(int argc, char**argv) {
 			}
 		}*/
 		//m.UpdateRotation();
+
+
+		/*
 		RenderModel(m, cam, screen, pixels, depthBuffer, uvtex, lightInfo);
 		Model s = m;
 		s.position = {0,0,1};
@@ -1530,7 +1597,11 @@ int main(int argc, char**argv) {
 		s.position = {2,0,0};
 		s.scale = {0.2, 0.2 ,0.2};
 		RenderModel(s, cam, screen, pixels, depthBuffer, NULL, lightInfo);
-		RenderModel(c, cam, screen, pixels, depthBuffer, NULL, lightInfo);
+		RenderModel(c, cam, screen, pixels, depthBuffer, NULL, lightInfo);*/
+		
+
+		RenderScene(scene, screen, pixels, depthBuffer);
+
 		//RenderModel(c, s2, cam, screen, pixels, depthBuffer, col);
 		/*#pragma omp parallel for
 		for(int i = 0; i<s2; i+=3) {
@@ -1582,7 +1653,200 @@ int main(int argc, char**argv) {
 				}
 			}
 		}*/
+
+		// dithering idk
+
+		
+	//	for(int y = 0; y<SCR_HEIGHT; y++) {
+	//		for(int x = 0; x<SCR_WIDTH; x++) {
+	//			Uint8 r,g,b;
+	//			int index;
+	//			index = x+y*SCR_WIDTH;
+	//			BinToRGB(pixels[index], &r, &g, &b);
+	//			/*float grey = r*0.3 + g*0.6 + b*0.1;
+	//			r = grey;
+	//			g = grey;
+	//			b = grey;*/
+	//			float3 oldpixel = {(float)r,(float)g,(float)b};
+	//			float reduction = 17;
+	//			float reductionFac = 1/reduction;
+
+	//			// noise dither
+	//			/*
+	//			oldpixel.x += (((float)(rand()%1000)/1000.f) - 0.5)*255;
+	//			oldpixel.y += (((float)(rand()%1000)/1000.f) - 0.5)*255;
+	//			oldpixel.z += (((float)(rand()%1000)/1000.f) - 0.5)*255;*/
+
+	//			// ordered dithering
+	//			// better for lower color depths imo
+	//			/*
+	//			float fac = 1.f/16;
+	//			float ditherMatrix[4][4] {
+	//				{0*fac, 8*fac, 2*fac, 10*fac},
+	//				{12*fac, 4*fac, 14*fac, 6*fac},
+	//				{3*fac, 11*fac, 1*fac, 9*fac},
+	//				{15*fac, 7 *fac, 13*fac, 5*fac}
+	//			};
+	//			oldpixel.x += 255*((ditherMatrix[(y)%4][(x)%4]) - 0.5);
+	//			oldpixel.y += 255*((ditherMatrix[(y)%4][(x)%4]) - 0.5);
+	//			oldpixel.z += 255*((ditherMatrix[(y)%4][(x)%4]) - 0.5);*/
+	//			float3 newpixel = {
+	//				(float)fmin(255,std::round(oldpixel.x*reductionFac)*reduction),
+	//				(float)fmin(255,std::round(oldpixel.y*reductionFac)*reduction),
+	//				(float)fmin(255,std::round(oldpixel.z*reductionFac)*reduction),
+	//			};
+
+	//			//without this color looks like its on fire??
+	//			newpixel.x = fmin(255, newpixel.x);
+	//			newpixel.x = fmax(0, newpixel.x);
+	//			newpixel.y = fmin(255, newpixel.y);
+	//			newpixel.y = fmax(0, newpixel.y);
+	//			newpixel.z = fmin(255, newpixel.z);
+	//			newpixel.z = fmax(0, newpixel.z);
+
+	//			float3 error = oldpixel-newpixel;
+	//			/*if(newpixel.x == 255) {
+	//				//newpixel.x = 0xE7;
+	//				//newpixel.y = 0xFE;
+	//				//newpixel.z = 0xFE;
+	//				//newpixel.x = 0x00;
+	//				//newpixel.y = 0xde;
+	//				//newpixel.z = 0x07;
+	//				//newpixel.x = 0xff;
+	//				//newpixel.y = 0x8f;
+	//				//newpixel.z = 0x3f;
+	//				//newpixel.x = 0xdd;
+	//				//newpixel.y = 0xc3;
+	//				//newpixel.z = 0xc3;
+	//				//newpixel.x = 0x47;
+	//				//newpixel.y = 0x91;
+	//				//newpixel.z = 0x5e;
+	//				newpixel.x = 0xe5;
+	//				newpixel.y = 0xa9;
+	//				newpixel.z = 0x36;
+	//			} else if(newpixel.x == 0){
+	//				//newpixel.x = 0x33;
+	//				//newpixel.y = 0x33;
+	//				//newpixel.z = 0x19;
+	//				//newpixel.x = 0x14;
+	//				//newpixel.y = 0x19;
+	//				//newpixel.z = 0x21;
+	//				//newpixel.x = 0x48;
+	//				//newpixel.y = 0x2a;
+	//				//newpixel.z = 0x00;
+	//				//newpixel.x = 0x6b;
+	//				//newpixel.y = 0x3f;
+	//				//newpixel.z = 0x69;
+	//				//newpixel.x = 0x16;
+	//				//newpixel.y = 0x0e;
+	//				//newpixel.z = 0x00;
+	//				newpixel.x = 0x41;
+	//				newpixel.y = 0x0b;
+	//				newpixel.z = 0x10;
+	//			} else if(newpixel.x == 170){
+	//				//newpixel.x = 0xff;
+	//				//newpixel.y = 0x5f;
+	//				//newpixel.z = 0x1f;
+	//				//newpixel.x = 0xa3;
+	//				//newpixel.y = 0x76;
+	//				//newpixel.z = 0xa2;
+	//				//newpixel.x = 0x33;
+	//				//newpixel.y = 0x52;
+	//				//newpixel.z = 0x25;
+	//				newpixel.x = 0xb5;
+	//				newpixel.y = 0x53;
+	//				newpixel.z = 0x1c;
+
+	//			} else {
+	//				//newpixel.x = 0x8d;
+	//				//newpixel.y = 0x5f;
+	//				//newpixel.z = 0x8c;
+	//				//newpixel.x = 0x23;
+	//				//newpixel.y = 0x27;
+	//				//newpixel.z = 0x0a;
+	//				newpixel.x = 0x79;
+	//				newpixel.y = 0x22;
+	//				newpixel.z = 0x13;
+	//			}*/
+
+
+	//			pixels[index] = RGBToBin(newpixel.x, newpixel.y, newpixel.z);
+
+	//			// floyd-steinberg
+	//			// better for higher color depths i think
+	//			///*
+	//			float3 color;
+
+	//			index = (x+1)+(y)*SCR_WIDTH;
+	//			index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
+	//			index = fmax(0, index);
+	//			BinToRGB(pixels[index], &r, &g, &b);
+	//			color = {(float)r,(float)g,(float)b};
+	//			color = color + error*7/16;
+	//			
+	//			//without this color looks like its on fire??
+	//			color.x = fmin(255, color.x);
+	//			color.x = fmax(0, color.x);
+	//			color.y = fmin(255, color.y);
+	//			color.y = fmax(0, color.y);
+	//			color.z = fmin(255, color.z);
+	//			color.z = fmax(0, color.z);
+	//			pixels[index] = RGBToBin(color.x, color.y, color.z);
+
+
+	//			index = (x-1)+(y+1)*SCR_WIDTH;
+	//			index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
+	//			index = fmax(0, index);
+	//			BinToRGB(pixels[index], &r, &g, &b);
+	//			color = {(float)r,(float)g,(float)b};
+	//			color = color + error*3/16;
+	//			//
+	//			//without this color looks like its on fire??
+	//			color.x = fmin(255, color.x);
+	//			color.x = fmax(0, color.x);
+	//			color.y = fmin(255, color.y);
+	//			color.y = fmax(0, color.y);
+	//			color.z = fmin(255, color.z);
+	//			color.z = fmax(0, color.z);
+	//			pixels[index] = RGBToBin(color.x, color.y, color.z);
+
+	//			index = (x)+(y+1)*SCR_WIDTH;
+	//			index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
+	//			index = fmax(0, index);
+	//			BinToRGB(pixels[index], &r, &g, &b);
+	//			color = {(float)r,(float)g,(float)b};
+	//			color = color + error*5/16;
+
+	//			//without this color looks like its on fire??
+	//			color.x = fmin(255, color.x);
+	//			color.x = fmax(0, color.x);
+	//			color.y = fmin(255, color.y);
+	//			color.y = fmax(0, color.y);
+	//			color.z = fmin(255, color.z);
+	//			color.z = fmax(0, color.z);
+	//			pixels[index] = RGBToBin(color.x, color.y, color.z);
+
+	//			index = (x+1)+(y+1)*SCR_WIDTH;
+	//			index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
+	//			index = fmax(0, index);
+	//			BinToRGB(pixels[index], &r, &g, &b);
+	//			color = {(float)r,(float)g,(float)b};
+	//			color = color + error*1/16;
+
+	//			//without this color looks like its on fire??
+	//			color.x = fmin(255, color.x);
+	//			color.x = fmax(0, color.x);
+	//			color.y = fmin(255, color.y);
+	//			color.y = fmax(0, color.y);
+	//			color.z = fmin(255, color.z);
+	//			color.z = fmax(0, color.z);
+	//			pixels[index] = RGBToBin(color.x, color.y, color.z);
+	//			//*/
+	//		}
+	//	}
+
 		SDL_UnlockTexture(screenTex);
+
 
 		SDL_RenderTextureRotated(renderer, screenTex, NULL,NULL, 180, NULL, SDL_FLIP_NONE);
 		SDL_SetRenderDrawColor(renderer, 255,0,0,255);
