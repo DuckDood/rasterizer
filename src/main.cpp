@@ -223,7 +223,66 @@ void getSurfacePixel(SDL_Surface * surface, int x, int y, Uint8 * r, Uint8 * g, 
 	SDL_GetRGBA(pixel_value, SDL_GetPixelFormatDetails(surface->format), SDL_GetSurfacePalette(surface), r, g, b, NULL);
 }
 
+class matrix3x3 {
+	public:
+	matrix3x3(float mat[3][3]) {
+		for(int y = 0; y<3; y++) {
+			for(int x = 0; x<3; x++) {
+				matrix[y][x] = mat[y][x];
+			}
+		}
+	}
+	matrix3x3() {};
+	float matrix[3][3] = {
+		{0,0,0},
+		{0,0,0},
+		{0,0,0}
+	};
+};
+class matrix1x3 {
+	public:
+	matrix1x3(float mat[3][1]) {
+		for(int y = 0; y<3; y++) {
+			for(int x = 0; x<1; x++) {
+				matrix[y][x] = mat[y][x];
+			}
+		}
+	}
+	matrix1x3() {};
+	float matrix[3][1] = 
+	{
+		{0},
+		{0},
+		{0},
+	}
+	;
+};
 
+matrix3x3 multiply3x3_3x3(matrix3x3 a, matrix3x3 b) {
+	matrix3x3 result;
+	for(int y = 0; y < 3; y++) {
+		for(int x = 0; x < 3; x++) {
+			float sum = 0;
+			for(int i = 0; i<3; i++) {
+				sum+=a.matrix[y][i] * b.matrix[i][x];
+			}
+			result.matrix[y][x] = sum;
+		}
+	}
+	return result;
+};
+matrix1x3 multiply3x3_1x3(matrix3x3 a, matrix1x3 b) {
+	matrix1x3 result;
+	for(int y = 0; y < 3; y++) {
+		float sum = 0;
+		for(int i = 0; i<3; i++) {
+			sum+=a.matrix[y][i] * b.matrix[i][0];
+		}
+		result.matrix[y][0] = sum;
+	}
+	return result;
+	
+};
 class Transform {
 	public:
 	float pitch = 0;
@@ -232,19 +291,28 @@ class Transform {
 	float3 position = {0,0,0};
 	float3 scale = {1,1,1};
 
-	float3 ihat, khat, jhat;
-	float3 ihat_inv, khat_inv, jhat_inv;
+
+
+	/*float3 ihat, khat, jhat;
+	float3 ihat_inv, khat_inv, jhat_inv;*/
+
+
 	//std::vector<std::vector<float3>> faces;
 	//std::vector<float3> triPoints;
+	
+	matrix3x3 rotationMatrix;
 	Transform* parent = NULL;
 	Transform() {
 		UpdateRotation();
 	}
 	float3 TransformVector(float3 ihat, float3 khat, float3 jhat, float3 v) {
+		/*
 		return ihat * v.x + jhat * v.y + khat * v.z;
+		*/
+		return {0,0,0};
 	}
 
-	std::tuple<float3, float3, float3> GetBasisVectors() {
+	std::tuple<float3, float3, float3> GetBasisVectors() {/*
 		float3 ihat_yaw = float3(std::cos(yaw), 0, std::sin(yaw));
 		float3 jhat_yaw = float3(0, 1, 0);
 		float3 khat_yaw = float3(-std::sin(yaw), 0, std::cos(yaw));
@@ -268,30 +336,38 @@ class Transform {
 		//float3 jhat = jhat_py;
 		//float3 khat = khat_py;
 
-		return {ihat, jhat, khat};
+		return {ihat, jhat, khat};*/
+		return {{0,0,0},{0,0,0},{0,0,0}};
 	}
 	std::tuple<float3, float3, float3> GetInverseBasisVectors() {
+		/*
 		auto [ihat, jhat, khat] = GetBasisVectors();
 		float3 ihat_inverse = float3(ihat.x, jhat.x, khat.x);
 		float3 jhat_inverse = float3(ihat.y, jhat.y, khat.y);
 		float3 khat_inverse = float3(ihat.z, jhat.z, khat.z);
-		return {ihat_inverse, jhat_inverse, khat_inverse};
+		return {ihat_inverse, jhat_inverse, khat_inverse};*/
+		return {{0,0,0},{0,0,0},{0,0,0}};
 	}
 	float3 ApplyRotationVectors(float3 p) {
 		//auto [ihat, jhat, khat] = GetBasisVectors();
+		/*
 		float3 world = TransformVector(ihat, jhat, khat, p);
 		if(parent != NULL) world = parent->ApplyRotationVectors(world);
-		return world;
+		return world;*/
+		return p;
 	}
 	float3 ApplyInverseRotationVectors(float3 p) {
 		//auto [ihat, jhat, khat] = GetBasisVectors();
+		/*
 		if(parent != NULL) p = parent->ApplyInverseRotationVectors(p);
 		float3 local = TransformVector(ihat_inv, jhat_inv, khat_inv, p);
-		return local;
+		return local;*/
+		return p;
 	}
 
 	float3 ToWorldPoint(float3 p) {
 		//auto [ihat, jhat, khat] = GetBasisVectors();
+		/*
 		if(parent != NULL) {
 			scale.x = -scale.x;
 			scale.y = -scale.y;
@@ -307,11 +383,41 @@ class Transform {
 			scale.y = -scale.y;
 			scale.z = -scale.z;
 		}
-		return world;
+		return world;*/
+
+		matrix1x3 point((float[3][1]){{p.x},{p.y},{p.z}});
+		// this break camera rotation
+		// WHY
+		// someone please tell me if they ever find this repo
+		/*matrix3x3 rollMatrix((float[3][3]){
+			{1,0,0},
+			{0,std::cos(roll),-std::sin(roll)},
+			{0,std::sin(roll),std::cos(roll)}}
+				);
+		matrix3x3 pitchMatrix((float[3][3]){
+				{std::cos(pitch), 0, std::sin(pitch)},
+				{0,1,0},
+				{-std::sin(pitch),0,std::cos(pitch)},
+				});
+		matrix3x3 yawMatrix((float[3][3]){
+				{std::cos(yaw), -std::sin(yaw), 0},
+				{std::sin(yaw), std::cos(yaw), 0},
+				{0,0,1},
+				});
+		rotationMatrix = multiply3x3_3x3(rollMatrix, multiply3x3_3x3(pitchMatrix, yawMatrix));*/
+		matrix1x3 world = multiply3x3_1x3(rotationMatrix, point);
+		p = {
+			world.matrix[0][0],
+			world.matrix[1][0],
+			world.matrix[2][0],
+		};
+
+		return p + position;
 	}
 
 
 	float3 ToLocalPoint(float3 worldPoint) {
+		/*
 		//pitch += 1.5708;
 		//auto [ihat, jhat, khat] = GetInverseBasisVectors();
 		//pitch -= 1.5708;
@@ -322,9 +428,31 @@ class Transform {
 		local.y /= scale.y;
 		local.z /= scale.z;
 
-		return local;
+		return local;*/
+		worldPoint=worldPoint-position;
+		matrix3x3 inverseRotationMatrix((float[3][3]){
+				{rotationMatrix.matrix[0][0],rotationMatrix.matrix[1][0],rotationMatrix.matrix[2][0],},
+				{rotationMatrix.matrix[0][1],rotationMatrix.matrix[1][1],rotationMatrix.matrix[2][1],},
+				{rotationMatrix.matrix[0][2],rotationMatrix.matrix[1][2],rotationMatrix.matrix[2][2],},
+				});
+		matrix1x3 local((float[3][1])
+				{
+				{worldPoint.x},
+				{worldPoint.y},
+				{worldPoint.z},
+				}
+				);
+		matrix1x3 rotated(multiply3x3_1x3(inverseRotationMatrix, local));
+		worldPoint = {
+			rotated.matrix[0][0],
+			rotated.matrix[1][0],
+			rotated.matrix[2][0],
+		};
+
+		return worldPoint;
 	}
 	void __attribute__((used)) UpdateRotation() {
+		/*
 		auto [ihatTemp, jhatTemp, khatTemp] = GetBasisVectors();
 		auto [ihatInvTemp, jhatInvTemp, khatInvTemp] = GetInverseBasisVectors();
 
@@ -334,8 +462,23 @@ class Transform {
 
 		ihat_inv = ihatInvTemp;
 		jhat_inv = jhatInvTemp;
-		khat_inv = khatInvTemp;
-		
+		khat_inv = khatInvTemp;*/
+		matrix3x3 yawMatrix((float[3][3]){
+			{1,0,0},
+			{0,std::cos(yaw),-std::sin(yaw)},
+			{0,std::sin(yaw),std::cos(yaw)}}
+				);
+		matrix3x3 pitchMatrix((float[3][3]){
+				{std::cos(pitch), 0, std::sin(pitch)},
+				{0,1,0},
+				{-std::sin(pitch),0,std::cos(pitch)},
+				});
+		matrix3x3 rollMatrix((float[3][3]){
+				{std::cos(roll), -std::sin(roll), 0},
+				{std::sin(roll), std::cos(roll), 0},
+				{0,0,1},
+				});
+		rotationMatrix = multiply3x3_3x3(rollMatrix, multiply3x3_3x3(pitchMatrix, yawMatrix));
 	};
 
 
@@ -588,6 +731,7 @@ class Model : public Transform {
 		return TransformVector(ihat, jhat, khat, p) + position;
 	}*/
 	float3 VertexToView(float3 vertex, Camera cam) {
+		// remind me if i forget to remove this to test if local points worked
 		float3 vertex_world = ToWorldPoint(vertex);
 		float3 vertex_view = cam.ToLocalPoint(vertex_world);
 		return vertex_view;
@@ -685,8 +829,14 @@ namespace modelSamples {
 		normal = Normalize(normal);
 
 
-		float3 pointPos = (data.worldPoints[0] + data.worldPoints[1] + data.worldPoints[2])*0.33;
+		float3 pointPos = {0,0,0};
+
+		pointPos = pointPos + (data.worldPoints[0] * depthX) * weights.x;
+		pointPos = pointPos + (data.worldPoints[0+1] * depthY) * weights.y;
+		pointPos = pointPos + (data.worldPoints[0+2] *  depthZ) * weights.z;
+		pointPos = pointPos * depth;
 		data.pointPos=pointPos;
+
 
 
 		/*float3 lightPosition;
@@ -1130,9 +1280,9 @@ void RenderModel(Model m, Camera cam, float2 screen, Uint32* pixels, float depth
 						data.coords[1] = coords[1 + index];
 						data.coords[2] = coords[2 + index];
 
-						data.worldPoints[0] = point1world;
-						data.worldPoints[1] = point2world;
-						data.worldPoints[2] = point3world;
+						data.worldPoints[0] = cam.ToWorldPoint(points[0 + index]);
+						data.worldPoints[1] = cam.ToWorldPoint(points[1 + index]);
+						data.worldPoints[2] = cam.ToWorldPoint(points[2 + index]);
 
 						m.sample(weights, depths, depth, data, surface, &r, &g, &b, &m, lightInfo);
 						//getSurfacePixel(surface, round(texCoord.x*surface->w), round(texCoord.y*surface->h), &r, &g, &b);
@@ -1222,7 +1372,7 @@ int main(int argc, char**argv) {
 	int realWinHeight;
 
 	std::vector<lightData> lightInfo; 
-	lightInfo.push_back({{0,0.5,1}, 2, lightData::point});
+	lightInfo.push_back({{0,1,0}, 2, lightData::point});
 	lightInfo.push_back({{2,0,0}, 2, lightData::point});
 
 	srand(time(0));
@@ -1248,7 +1398,7 @@ int main(int argc, char**argv) {
 	int pitch;
 	Model m;
 	Camera cam;
-	cam.position.y = -2;
+	cam.position.z = -2;
 	cam.fov = toRadians(90);
 	//m.scale = {5,5,5};
 	Model c;
@@ -1257,7 +1407,6 @@ int main(int argc, char**argv) {
 	//m.position.y = 10;
 	//m.position.z = 1;
 	//c.pitch = toRadians(90);
-	m.roll = 3.141;
 
 	SDL_Rect mouseRect = {SCR_WIDTH/2, SCR_HEIGHT/2, 3, 3};
 	c.parent = &m;
@@ -1292,7 +1441,7 @@ int main(int argc, char**argv) {
 	s.position = {2, 0, 0};
 	Model s2;
 	s2.scale = {0.2,0.2,0.2};
-	s2.position = {0, 0, 1};
+	s2.position = {0, 1, 0};
 
 	initialiseModel(&m, "resources/earth.obj", modelSamples::smoothLightingAtPoint);
 	initialiseModel(&s, "resources/earth.obj", modelSamples::noLightingAtPoint);
@@ -1436,9 +1585,9 @@ int main(int argc, char**argv) {
 
 				case SDL_EVENT_MOUSE_MOTION:
 					float2 mouseDelta(event.motion.xrel / SCR_WIDTH * mouseSensitivity, event.motion.yrel / SCR_WIDTH * mouseSensitivity);
-					cam.pitch += mouseDelta.y;
-					cam.yaw +=  mouseDelta.x;
-					cam.pitch = Clamp(cam.pitch, -1.5708, 1.5708);
+					cam.yaw += mouseDelta.y;
+					cam.pitch -=  mouseDelta.x;
+					cam.yaw = Clamp(cam.yaw, -1.5708, 1.5708);
 					cam.UpdateRotation();
 					break;
 
@@ -1446,7 +1595,6 @@ int main(int argc, char**argv) {
 			}
 
 		}
-		m.roll+=0.01;
 		m.UpdateRotation();
 		//m.position.z += sin(frameCount*0.1)*0.01;
 		/*if(keyDown[D]) {
@@ -1482,37 +1630,28 @@ int main(int argc, char**argv) {
 		//float up;
 		//https://stackoverflow.com/questions/10569659/camera-pitch-yaw-to-direction-vector
 
-		if(keyDown[A]) {
-			cam.position.x += cos(cam.yaw) * camSpeed;
-			cam.position.y += sin(cam.yaw) * camSpeed;
-		}
-		if(keyDown[D]) {
-			cam.position.x -= cos(cam.yaw) * camSpeed;
-			cam.position.y -= sin(cam.yaw) * camSpeed;
-		}
-		float xzlen = cos(cam.pitch);
-		float y = xzlen * cos(cam.yaw);
-		float z = -sin(cam.pitch);
-		float x = xzlen * sin(-cam.yaw);
+		float xzlen = cos(cam.yaw);
+		float x = xzlen*sin(cam.pitch);
+		float y = -sin(cam.yaw);
+		float z = xzlen*cos(cam.pitch);
 		//up = sin(cam.pitch);
 		//float ps = 1 - fabs(up);
 		//ps = cbrt(ps);
 		//SDL_Log("ps, %f", ps);
+		if(keyDown[A]) {
+			cam.position.x -= -cos(cam.pitch) * camSpeed * 0.5;
+			cam.position.z -= sin(cam.pitch) * camSpeed * 0.5;
+		}
+		if(keyDown[D]) {
+			cam.position.x += -cos(cam.pitch) * camSpeed * 0.5;
+			cam.position.z += sin(cam.pitch) * camSpeed * 0.5;
+		}
 		if(keyDown[W]) {
-			//cam.position.x -= sin(cam.yaw) * ps;
-			//cam.position.y += cos(cam.yaw) * ps;
-
-			//cam.position.z -= up;
-			
 			cam.position.x += x * camSpeed;
 			cam.position.y += y * camSpeed;
 			cam.position.z += z * camSpeed;
 		}
 		if(keyDown[S]) {
-			//cam.position.x += sin(cam.yaw) * ps;
-			//cam.position.y -= cos(cam.yaw) * ps;
-
-			//cam.position.z += up;
 			cam.position.x -= x * camSpeed;
 			cam.position.y -= y * camSpeed;
 			cam.position.z -= z * camSpeed;
@@ -1533,10 +1672,10 @@ int main(int argc, char**argv) {
 			m.position.x+=0.1;
 		}
 		if(keyDown[UP]) {
-			m.position.y-=0.1;
+			m.position.z-=0.1;
 		}
 		if(keyDown[DOWN]) {
-			m.position.y+=0.1;
+			m.position.z+=0.1;
 		}
 
 			
