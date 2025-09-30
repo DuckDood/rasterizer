@@ -223,6 +223,9 @@ void getSurfacePixel(SDL_Surface * surface, int x, int y, Uint8 * r, Uint8 * g, 
 	SDL_GetRGBA(pixel_value, SDL_GetPixelFormatDetails(surface->format), SDL_GetSurfacePalette(surface), r, g, b, NULL);
 }
 
+// i know the naming is wrong but i like using x then y instead of y then x and its MY project
+// hehe haha
+// this is gonna confuse me at some point
 class matrix3x3 {
 	public:
 	matrix3x3(float mat[3][3]) {
@@ -238,7 +241,38 @@ class matrix3x3 {
 		{0,0,0},
 		{0,0,0}
 	};
+	void setMatrix(float mat[3][3]) {
+		for(int y = 0; y<3; y++) {
+			for(int x = 0; x<3; x++) {
+				matrix[y][x] = mat[y][x];
+			}
+		}
+	}
 };
+/*class matrix4x4 {
+	public:
+	matrix4x4(float mat[4][4]) {
+		for(int y = 0; y<4; y++) {
+			for(int x = 0; x<4; x++) {
+				matrix[y][x] = mat[y][x];
+			}
+		}
+	}
+	matrix4x4() {};
+	float matrix[4][4] = {
+		{0,0,0,0},
+		{0,0,0,0},
+		{0,0,0,0},
+		{0,0,0,0},
+	};
+	void setMatrix(float mat[4][4]) {
+		for(int y = 0; y<4; y++) {
+			for(int x = 0; x<4; x++) {
+				matrix[y][x] = mat[y][x];
+			}
+		}
+	}
+};*/
 class matrix1x3 {
 	public:
 	matrix1x3(float mat[3][1]) {
@@ -256,7 +290,41 @@ class matrix1x3 {
 		{0},
 	}
 	;
+	void setMatrix(float mat[3][1]) {
+		for(int y = 0; y<3; y++) {
+			for(int x = 0; x<1; x++) {
+				matrix[y][x] = mat[y][x];
+			}
+		}
+	}
 };
+
+/*class matrix1x4 {
+	public:
+	matrix1x4(float mat[4][1]) {
+		for(int y = 0; y<4; y++) {
+			for(int x = 0; x<1; x++) {
+				matrix[y][x] = mat[y][x];
+			}
+		}
+	}
+	matrix1x4() {};
+	float matrix[4][1] = 
+	{
+		{0},
+		{0},
+		{0},
+		{0},
+	}
+	;
+	void setMatrix(float mat[4][1]) {
+		for(int y = 0; y<4; y++) {
+			for(int x = 0; x<1; x++) {
+				matrix[y][x] = mat[y][x];
+			}
+		}
+	}
+};*/
 
 matrix3x3 multiply3x3_3x3(matrix3x3 a, matrix3x3 b) {
 	matrix3x3 result;
@@ -283,6 +351,34 @@ matrix1x3 multiply3x3_1x3(matrix3x3 a, matrix1x3 b) {
 	return result;
 	
 };
+
+/*matrix4x4 multiply4x4_4x4(matrix4x4 a, matrix4x4 b) {
+	matrix4x4 result;
+	for(int y = 0; y < 4; y++) {
+		for(int x = 0; x < 4; x++) {
+			float sum = 0;
+			for(int i = 0; i<4; i++) {
+				sum+=a.matrix[y][i] * b.matrix[i][x];
+			}
+			result.matrix[y][x] = sum;
+		}
+	}
+	return result;
+};
+matrix1x4 multiply4x4_1x4(matrix4x4 a, matrix1x4 b) {
+	matrix1x4 result;
+	for(int y = 0; y < 4; y++) {
+		float sum = 0;
+		for(int i = 0; i<4; i++) {
+			sum+=a.matrix[y][i] * b.matrix[i][0];
+		}
+		result.matrix[y][0] = sum;
+	}
+	return result;
+	
+};*/
+
+
 class Transform {
 	public:
 	float pitch = 0;
@@ -301,6 +397,9 @@ class Transform {
 	//std::vector<float3> triPoints;
 	
 	matrix3x3 rotationMatrix;
+	matrix3x3 scaleMatrix;
+	//matrix4x4 transformationMatrix;
+	matrix3x3 transformationMatrix;
 	Transform* parent = NULL;
 	Transform() {
 		UpdateRotation();
@@ -354,6 +453,15 @@ class Transform {
 		float3 world = TransformVector(ihat, jhat, khat, p);
 		if(parent != NULL) world = parent->ApplyRotationVectors(world);
 		return world;*/
+		matrix1x3 point((float[3][1]){
+					{p.x},
+					{p.y},
+					{p.z},
+				});
+		matrix1x3 world = multiply3x3_1x3(rotationMatrix, point);
+		p.x = world.matrix[0][0];
+		p.y = world.matrix[1][0];
+		p.z = world.matrix[2][0];
 		return p;
 	}
 	float3 ApplyInverseRotationVectors(float3 p) {
@@ -362,6 +470,20 @@ class Transform {
 		if(parent != NULL) p = parent->ApplyInverseRotationVectors(p);
 		float3 local = TransformVector(ihat_inv, jhat_inv, khat_inv, p);
 		return local;*/
+		matrix3x3 inverseRotationMatrix((float[3][3]){
+				{rotationMatrix.matrix[0][0],rotationMatrix.matrix[1][0],rotationMatrix.matrix[2][0],},
+				{rotationMatrix.matrix[0][1],rotationMatrix.matrix[1][1],rotationMatrix.matrix[2][1],},
+				{rotationMatrix.matrix[0][2],rotationMatrix.matrix[1][2],rotationMatrix.matrix[2][2],},
+				});
+		matrix1x3 point((float[3][1]){
+					{p.x},
+					{p.y},
+					{p.z},
+				});
+		matrix1x3 world = multiply3x3_1x3(inverseRotationMatrix, point);
+		p.x = point.matrix[0][0];
+		p.y = point.matrix[1][0];
+		p.z = point.matrix[2][0];
 		return p;
 	}
 
@@ -385,6 +507,7 @@ class Transform {
 		}
 		return world;*/
 
+		//matrix1x4 point((float[4][1]){{p.x},{p.y},{p.z}, {1}});
 		matrix1x3 point((float[3][1]){{p.x},{p.y},{p.z}});
 		// this break camera rotation
 		// WHY
@@ -405,7 +528,14 @@ class Transform {
 				{0,0,1},
 				});
 		rotationMatrix = multiply3x3_3x3(rollMatrix, multiply3x3_3x3(pitchMatrix, yawMatrix));*/
-		matrix1x3 world = multiply3x3_1x3(rotationMatrix, point);
+		/*matrix3x3 scaleMatrix((float[3][3]){
+					{scale.x,0,0},
+					{0,scale.y,0},
+					{0,0,scale.z},
+				});*/
+
+		//transformationMatrix = multiply3x3_3x3(rotationMatrix, scaleMatrix);
+		matrix1x3 world = multiply3x3_1x3(transformationMatrix, point);
 		p = {
 			world.matrix[0][0],
 			world.matrix[1][0],
@@ -413,10 +543,11 @@ class Transform {
 		};
 
 		return p + position;
+		//return p;
 	}
 
 
-	float3 ToLocalPoint(float3 worldPoint) {
+	float3 ToLocalPoint(float3 localPoint) {
 		/*
 		//pitch += 1.5708;
 		//auto [ihat, jhat, khat] = GetInverseBasisVectors();
@@ -429,27 +560,36 @@ class Transform {
 		local.z /= scale.z;
 
 		return local;*/
-		worldPoint=worldPoint-position;
-		matrix3x3 inverseRotationMatrix((float[3][3]){
-				{rotationMatrix.matrix[0][0],rotationMatrix.matrix[1][0],rotationMatrix.matrix[2][0],},
-				{rotationMatrix.matrix[0][1],rotationMatrix.matrix[1][1],rotationMatrix.matrix[2][1],},
-				{rotationMatrix.matrix[0][2],rotationMatrix.matrix[1][2],rotationMatrix.matrix[2][2],},
+
+		localPoint=localPoint-position;
+
+		// im not figuring out how to invert a 4x4 matrix ill just add the position to the end
+		/*matrix4x4 inverseTransformationMatrix((float[4][4]){
+				{transformationMatrix.matrix[0][0],transformationMatrix.matrix[1][0],transformationMatrix.matrix[2][0],transformationMatrix.matrix[3][0]},
+				{transformationMatrix.matrix[0][1],transformationMatrix.matrix[1][1],transformationMatrix.matrix[2][1],transformationMatrix.matrix[3][1]},
+				{transformationMatrix.matrix[0][2],transformationMatrix.matrix[1][2],transformationMatrix.matrix[2][2],transformationMatrix.matrix[3][2]},
+				{transformationMatrix.matrix[0][3],transformationMatrix.matrix[1][3],transformationMatrix.matrix[2][3],transformationMatrix.matrix[3][3]},
+				});*/
+		matrix3x3 inverseTransformationMatrix((float[3][3]){
+				{transformationMatrix.matrix[0][0],transformationMatrix.matrix[1][0],transformationMatrix.matrix[2][0],},
+				{transformationMatrix.matrix[0][1],transformationMatrix.matrix[1][1],transformationMatrix.matrix[2][1],},
+				{transformationMatrix.matrix[0][2],transformationMatrix.matrix[1][2],transformationMatrix.matrix[2][2],},
 				});
 		matrix1x3 local((float[3][1])
 				{
-				{worldPoint.x},
-				{worldPoint.y},
-				{worldPoint.z},
+				{localPoint.x},
+				{localPoint.y},
+				{localPoint.z},
 				}
 				);
-		matrix1x3 rotated(multiply3x3_1x3(inverseRotationMatrix, local));
-		worldPoint = {
+		matrix1x3 rotated(multiply3x3_1x3(inverseTransformationMatrix, local));
+		localPoint = {
 			rotated.matrix[0][0],
 			rotated.matrix[1][0],
 			rotated.matrix[2][0],
 		};
 
-		return worldPoint;
+		return localPoint;
 	}
 	void __attribute__((used)) UpdateRotation() {
 		/*
@@ -479,6 +619,19 @@ class Transform {
 				{0,0,1},
 				});
 		rotationMatrix = multiply3x3_3x3(rollMatrix, multiply3x3_3x3(pitchMatrix, yawMatrix));
+		scaleMatrix.setMatrix((float[3][3]){
+					{scale.x,0,0},
+					{0,scale.y,0},
+					{0,0,scale.z},
+				});
+
+		transformationMatrix = multiply3x3_3x3(rotationMatrix, scaleMatrix);
+		/*transformationMatrix.setMatrix((float[4][4]){
+					{SRMatrix.matrix[0][0],SRMatrix.matrix[0][1],SRMatrix.matrix[0][2],position.x},
+					{SRMatrix.matrix[1][0],SRMatrix.matrix[1][1],SRMatrix.matrix[1][2],position.y},
+					{SRMatrix.matrix[2][0],SRMatrix.matrix[2][1],SRMatrix.matrix[2][2],position.z},
+					{0,0,0,1},
+				});*/
 	};
 
 
@@ -778,12 +931,21 @@ float3 applyLighting(std::vector<lightData> lightInfo, float3 normal, Model* mod
 			//if(lightInfo.at(i).type == lightData::point) {
 			// its an enum of 1 or 0 so i can just check it directly
 			if(lightInfo.at(i).type) {
-				lightDir = Normalize((dir = lightPosition - vertInfo.pointPos)); // close *enough* instead of doing slightly more work and basing it on vertex positions
-																					  // actually, its a lot harder to convert it with vertex positions because NEAR PLANE CLIPPING DOIFJISODJFSJDFO
-				dir.x = fabs(dir.x);
-				dir.y = fabs(dir.y);
-				dir.z = fabs(dir.z);
-				level = 1/sqrtf(dir.x * dir.x + dir.y * dir.y + dir.z + dir.z); // chat should i use the quake 3 algorithm
+				lightDir = Normalize((dir = lightPosition - vertInfo.pointPos));
+																			
+				//dir.x = fabs(dir.x);
+				//dir.y = fabs(dir.y);
+				//dir.z = fabs(dir.z);
+				if(dir.x*dir.x < 0) {
+					SDL_Log("%f", dir.x*dir.x);
+				}
+				if(dir.y*dir.y < 0) {
+					SDL_Log("%f", dir.y*dir.y);
+				}
+				if(dir.z*dir.z < 0) {
+					SDL_Log("%f", dir.z*dir.z);
+				}
+				level = 1/sqrt((dir.x * dir.x) + (dir.y * dir.y) + (dir.z * dir.z)); // chat should i use the quake 3 algorithm
 				strength = lightInfo.at(i).strength;
 				level *= strength;
 			//} else if(lightInfo.at(i).type == lightData::directional) {
@@ -795,7 +957,7 @@ float3 applyLighting(std::vector<lightData> lightInfo, float3 normal, Model* mod
 				level = strength;
 			}
 
-			lightLevel = (1+Dot3(Normalize(normal), lightDir)) * 0.5;
+			lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), lightDir)) * 0.5;
 			l = l + (float3(level,level,level) * lightLevel);
 				
 		}
@@ -875,7 +1037,6 @@ namespace modelSamples {
 			
 		}*/
 
-		normal = model->ApplyRotationVectors(normal);
 		float3 l = applyLighting(lightInfo, normal, model, data);
 
 
@@ -927,7 +1088,11 @@ namespace modelSamples {
 
 		float3 normal = Normalize((data.norms[0] + data.norms[0+1] + data.norms[0+2])*0.33);
 
-		float3 pointPos = (data.worldPoints[0] + data.worldPoints[1] + data.worldPoints[2])*0.33;
+		float3 pointPos = {0,0,0};
+		pointPos = pointPos + (data.worldPoints[0] * depthX) * weights.x;
+		pointPos = pointPos + (data.worldPoints[0+1] * depthY) * weights.y;
+		pointPos = pointPos + (data.worldPoints[0+2] *  depthZ) * weights.z;
+		pointPos = pointPos * depth;
 		data.pointPos=pointPos;
 
 		/*float3 lightPosition = float3(0, 0, 1);
@@ -944,7 +1109,6 @@ namespace modelSamples {
 
 		/*lightLevel = (1+Dot3(Normalize(model->ApplyRotationVectors(normal)), {0,0,1})) * 0.5;
 		l = l + float3(1,1,1) * lightLevel;*/
-		normal = model->ApplyRotationVectors(normal);
 		float3 l = applyLighting(lightInfo, normal, model, data);
 		
 		//if(sr) {
@@ -1373,7 +1537,7 @@ int main(int argc, char**argv) {
 
 	std::vector<lightData> lightInfo; 
 	lightInfo.push_back({{0,1,0}, 2, lightData::point});
-	lightInfo.push_back({{2,0,0}, 2, lightData::point});
+	//lightInfo.push_back({{2,0,0}, 2, lightData::point});
 
 	srand(time(0));
 	if(!SDL_Init(SDL_INIT_VIDEO)) {
@@ -1449,7 +1613,7 @@ int main(int argc, char**argv) {
 	initialiseModel(&c, "stars.obj", modelSamples::noLightingAtPoint);
 	scene.models.push_back(&m);
 	scene.models.push_back(&c);
-	scene.models.push_back(&s);
+	//scene.models.push_back(&s);
 	scene.models.push_back(&s2);
 	scene.lightInfo = lightInfo;
 	scene.cam = &cam;
@@ -1595,6 +1759,7 @@ int main(int argc, char**argv) {
 			}
 
 		}
+		m.pitch+=0.01;
 		m.UpdateRotation();
 		//m.position.z += sin(frameCount*0.1)*0.01;
 		/*if(keyDown[D]) {
@@ -1677,6 +1842,7 @@ int main(int argc, char**argv) {
 		if(keyDown[DOWN]) {
 			m.position.z+=0.1;
 		}
+		m.position.y = -1;
 
 			
 		
@@ -1796,193 +1962,151 @@ int main(int argc, char**argv) {
 		// dithering idk
 
 		
-	//	for(int y = 0; y<SCR_HEIGHT; y++) {
-	//		for(int x = 0; x<SCR_WIDTH; x++) {
-	//			Uint8 r,g,b;
-	//			int index;
-	//			index = x+y*SCR_WIDTH;
-	//			BinToRGB(pixels[index], &r, &g, &b);
-	//			/*float grey = r*0.3 + g*0.6 + b*0.1;
-	//			r = grey;
-	//			g = grey;
-	//			b = grey;*/
-	//			float3 oldpixel = {(float)r,(float)g,(float)b};
-	//			float reduction = 17;
-	//			float reductionFac = 1/reduction;
+		for(int y = 0; y<SCR_HEIGHT; y++) {
+			for(int x = 0; x<SCR_WIDTH; x++) {
+				Uint8 r,g,b;
+				int index;
+				index = x+y*SCR_WIDTH;
+				BinToRGB(pixels[index], &r, &g, &b);
+				float grey = r*0.3 + g*0.6 + b*0.1;
+				r = grey;
+				g = grey;
+				b = grey;
+				float3 oldpixel = {(float)r,(float)g,(float)b};
+				float reduction = 85;
+				float reductionFac = 1/reduction;
 
-	//			// noise dither
-	//			/*
-	//			oldpixel.x += (((float)(rand()%1000)/1000.f) - 0.5)*255;
-	//			oldpixel.y += (((float)(rand()%1000)/1000.f) - 0.5)*255;
-	//			oldpixel.z += (((float)(rand()%1000)/1000.f) - 0.5)*255;*/
+				// noise dither
+				/*
+				oldpixel.x += (((float)(rand()%1000)/1000.f) - 0.5)*255;
+				oldpixel.y += (((float)(rand()%1000)/1000.f) - 0.5)*255;
+				oldpixel.z += (((float)(rand()%1000)/1000.f) - 0.5)*255;
+				*/
 
-	//			// ordered dithering
-	//			// better for lower color depths imo
-	//			/*
-	//			float fac = 1.f/16;
-	//			float ditherMatrix[4][4] {
-	//				{0*fac, 8*fac, 2*fac, 10*fac},
-	//				{12*fac, 4*fac, 14*fac, 6*fac},
-	//				{3*fac, 11*fac, 1*fac, 9*fac},
-	//				{15*fac, 7 *fac, 13*fac, 5*fac}
-	//			};
-	//			oldpixel.x += 255*((ditherMatrix[(y)%4][(x)%4]) - 0.5);
-	//			oldpixel.y += 255*((ditherMatrix[(y)%4][(x)%4]) - 0.5);
-	//			oldpixel.z += 255*((ditherMatrix[(y)%4][(x)%4]) - 0.5);*/
-	//			float3 newpixel = {
-	//				(float)fmin(255,std::round(oldpixel.x*reductionFac)*reduction),
-	//				(float)fmin(255,std::round(oldpixel.y*reductionFac)*reduction),
-	//				(float)fmin(255,std::round(oldpixel.z*reductionFac)*reduction),
-	//			};
+				// ordered dithering
+				// better for lower color depths imo
+				///*
+				float fac = 1.f/16.f;
+				float ditherMatrix[4][4] {
+					{0, 8, 2, 10},
+					{12, 4, 14, 6},
+					{3, 11, 1, 9},
+					{15, 7 , 13, 5}
+				};
+				oldpixel.x += (255/(255/reduction))*(((fac*ditherMatrix[(y)%4][(x)%4]) - 0.5));
+				oldpixel.y += (255/(255/reduction))*(((fac*ditherMatrix[(y)%4][(x)%4]) - 0.5));
+				oldpixel.z += (255/(255/reduction))*(((fac*ditherMatrix[(y)%4][(x)%4]) - 0.5));
+				//*/
+				
+				float3 newpixel = {
+					(float)fmin(255,std::round(oldpixel.x*reductionFac)*reduction),
+					(float)fmin(255,std::round(oldpixel.y*reductionFac)*reduction),
+					(float)fmin(255,std::round(oldpixel.z*reductionFac)*reduction),
+				};
 
-	//			//without this color looks like its on fire??
-	//			newpixel.x = fmin(255, newpixel.x);
-	//			newpixel.x = fmax(0, newpixel.x);
-	//			newpixel.y = fmin(255, newpixel.y);
-	//			newpixel.y = fmax(0, newpixel.y);
-	//			newpixel.z = fmin(255, newpixel.z);
-	//			newpixel.z = fmax(0, newpixel.z);
+				//without this color looks like its on fire??
+				newpixel.x = fmin(255, newpixel.x);
+				newpixel.x = fmax(0, newpixel.x);
+				newpixel.y = fmin(255, newpixel.y);
+				newpixel.y = fmax(0, newpixel.y);
+				newpixel.z = fmin(255, newpixel.z);
+				newpixel.z = fmax(0, newpixel.z);
 
-	//			float3 error = oldpixel-newpixel;
-	//			/*if(newpixel.x == 255) {
-	//				//newpixel.x = 0xE7;
-	//				//newpixel.y = 0xFE;
-	//				//newpixel.z = 0xFE;
-	//				//newpixel.x = 0x00;
-	//				//newpixel.y = 0xde;
-	//				//newpixel.z = 0x07;
-	//				//newpixel.x = 0xff;
-	//				//newpixel.y = 0x8f;
-	//				//newpixel.z = 0x3f;
-	//				//newpixel.x = 0xdd;
-	//				//newpixel.y = 0xc3;
-	//				//newpixel.z = 0xc3;
-	//				//newpixel.x = 0x47;
-	//				//newpixel.y = 0x91;
-	//				//newpixel.z = 0x5e;
-	//				newpixel.x = 0xe5;
-	//				newpixel.y = 0xa9;
-	//				newpixel.z = 0x36;
-	//			} else if(newpixel.x == 0){
-	//				//newpixel.x = 0x33;
-	//				//newpixel.y = 0x33;
-	//				//newpixel.z = 0x19;
-	//				//newpixel.x = 0x14;
-	//				//newpixel.y = 0x19;
-	//				//newpixel.z = 0x21;
-	//				//newpixel.x = 0x48;
-	//				//newpixel.y = 0x2a;
-	//				//newpixel.z = 0x00;
-	//				//newpixel.x = 0x6b;
-	//				//newpixel.y = 0x3f;
-	//				//newpixel.z = 0x69;
-	//				//newpixel.x = 0x16;
-	//				//newpixel.y = 0x0e;
-	//				//newpixel.z = 0x00;
-	//				newpixel.x = 0x41;
-	//				newpixel.y = 0x0b;
-	//				newpixel.z = 0x10;
-	//			} else if(newpixel.x == 170){
-	//				//newpixel.x = 0xff;
-	//				//newpixel.y = 0x5f;
-	//				//newpixel.z = 0x1f;
-	//				//newpixel.x = 0xa3;
-	//				//newpixel.y = 0x76;
-	//				//newpixel.z = 0xa2;
-	//				//newpixel.x = 0x33;
-	//				//newpixel.y = 0x52;
-	//				//newpixel.z = 0x25;
-	//				newpixel.x = 0xb5;
-	//				newpixel.y = 0x53;
-	//				newpixel.z = 0x1c;
+				float3 error = oldpixel-newpixel;
+				if(newpixel.x == 255) {
+					newpixel.x = 0xe5;
+					newpixel.y = 0xa9;
+					newpixel.z = 0x36;
+				} else if(newpixel.x == 0){
+					newpixel.x = 0x41;
+					newpixel.y = 0x0b;
+					newpixel.z = 0x10;
+				} else if(newpixel.x == 170){
+					newpixel.x = 0xb5;
+					newpixel.y = 0x53;
+					newpixel.z = 0x1c;
 
-	//			} else {
-	//				//newpixel.x = 0x8d;
-	//				//newpixel.y = 0x5f;
-	//				//newpixel.z = 0x8c;
-	//				//newpixel.x = 0x23;
-	//				//newpixel.y = 0x27;
-	//				//newpixel.z = 0x0a;
-	//				newpixel.x = 0x79;
-	//				newpixel.y = 0x22;
-	//				newpixel.z = 0x13;
-	//			}*/
+				} else {
+					newpixel.x = 0x79;
+					newpixel.y = 0x22;
+					newpixel.z = 0x13;
+				}
 
 
-	//			pixels[index] = RGBToBin(newpixel.x, newpixel.y, newpixel.z);
+				pixels[index] = RGBToBin(newpixel.x, newpixel.y, newpixel.z);
 
-	//			// floyd-steinberg
-	//			// better for higher color depths i think
-	//			///*
-	//			float3 color;
+				// floyd-steinberg
+				// better for higher color depths i think
+				/*
+				float3 color;
 
-	//			index = (x+1)+(y)*SCR_WIDTH;
-	//			index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
-	//			index = fmax(0, index);
-	//			BinToRGB(pixels[index], &r, &g, &b);
-	//			color = {(float)r,(float)g,(float)b};
-	//			color = color + error*7/16;
-	//			
-	//			//without this color looks like its on fire??
-	//			color.x = fmin(255, color.x);
-	//			color.x = fmax(0, color.x);
-	//			color.y = fmin(255, color.y);
-	//			color.y = fmax(0, color.y);
-	//			color.z = fmin(255, color.z);
-	//			color.z = fmax(0, color.z);
-	//			pixels[index] = RGBToBin(color.x, color.y, color.z);
+				index = (x+1)+(y)*SCR_WIDTH;
+				index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
+				index = fmax(0, index);
+				BinToRGB(pixels[index], &r, &g, &b);
+				color = {(float)r,(float)g,(float)b};
+				color = color + error*7/16;
+				
+				//without this color looks like its on fire??
+				color.x = fmin(255, color.x);
+				color.x = fmax(0, color.x);
+				color.y = fmin(255, color.y);
+				color.y = fmax(0, color.y);
+				color.z = fmin(255, color.z);
+				color.z = fmax(0, color.z);
+				pixels[index] = RGBToBin(color.x, color.y, color.z);
 
 
-	//			index = (x-1)+(y+1)*SCR_WIDTH;
-	//			index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
-	//			index = fmax(0, index);
-	//			BinToRGB(pixels[index], &r, &g, &b);
-	//			color = {(float)r,(float)g,(float)b};
-	//			color = color + error*3/16;
-	//			//
-	//			//without this color looks like its on fire??
-	//			color.x = fmin(255, color.x);
-	//			color.x = fmax(0, color.x);
-	//			color.y = fmin(255, color.y);
-	//			color.y = fmax(0, color.y);
-	//			color.z = fmin(255, color.z);
-	//			color.z = fmax(0, color.z);
-	//			pixels[index] = RGBToBin(color.x, color.y, color.z);
+				index = (x-1)+(y+1)*SCR_WIDTH;
+				index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
+				index = fmax(0, index);
+				BinToRGB(pixels[index], &r, &g, &b);
+				color = {(float)r,(float)g,(float)b};
+				color = color + error*3/16;
+				//
+				//without this color looks like its on fire??
+				color.x = fmin(255, color.x);
+				color.x = fmax(0, color.x);
+				color.y = fmin(255, color.y);
+				color.y = fmax(0, color.y);
+				color.z = fmin(255, color.z);
+				color.z = fmax(0, color.z);
+				pixels[index] = RGBToBin(color.x, color.y, color.z);
 
-	//			index = (x)+(y+1)*SCR_WIDTH;
-	//			index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
-	//			index = fmax(0, index);
-	//			BinToRGB(pixels[index], &r, &g, &b);
-	//			color = {(float)r,(float)g,(float)b};
-	//			color = color + error*5/16;
+				index = (x)+(y+1)*SCR_WIDTH;
+				index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
+				index = fmax(0, index);
+				BinToRGB(pixels[index], &r, &g, &b);
+				color = {(float)r,(float)g,(float)b};
+				color = color + error*5/16;
 
-	//			//without this color looks like its on fire??
-	//			color.x = fmin(255, color.x);
-	//			color.x = fmax(0, color.x);
-	//			color.y = fmin(255, color.y);
-	//			color.y = fmax(0, color.y);
-	//			color.z = fmin(255, color.z);
-	//			color.z = fmax(0, color.z);
-	//			pixels[index] = RGBToBin(color.x, color.y, color.z);
+				//without this color looks like its on fire??
+				color.x = fmin(255, color.x);
+				color.x = fmax(0, color.x);
+				color.y = fmin(255, color.y);
+				color.y = fmax(0, color.y);
+				color.z = fmin(255, color.z);
+				color.z = fmax(0, color.z);
+				pixels[index] = RGBToBin(color.x, color.y, color.z);
 
-	//			index = (x+1)+(y+1)*SCR_WIDTH;
-	//			index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
-	//			index = fmax(0, index);
-	//			BinToRGB(pixels[index], &r, &g, &b);
-	//			color = {(float)r,(float)g,(float)b};
-	//			color = color + error*1/16;
+				index = (x+1)+(y+1)*SCR_WIDTH;
+				index = fmin(SCR_WIDTH*SCR_HEIGHT, index);
+				index = fmax(0, index);
+				BinToRGB(pixels[index], &r, &g, &b);
+				color = {(float)r,(float)g,(float)b};
+				color = color + error*1/16;
 
-	//			//without this color looks like its on fire??
-	//			color.x = fmin(255, color.x);
-	//			color.x = fmax(0, color.x);
-	//			color.y = fmin(255, color.y);
-	//			color.y = fmax(0, color.y);
-	//			color.z = fmin(255, color.z);
-	//			color.z = fmax(0, color.z);
-	//			pixels[index] = RGBToBin(color.x, color.y, color.z);
-	//			//*/
-	//		}
-	//	}
+				//without this color looks like its on fire??
+				color.x = fmin(255, color.x);
+				color.x = fmax(0, color.x);
+				color.y = fmin(255, color.y);
+				color.y = fmax(0, color.y);
+				color.z = fmin(255, color.z);
+				color.z = fmax(0, color.z);
+				pixels[index] = RGBToBin(color.x, color.y, color.z);
+				*/
+			}
+		}
 
 		SDL_UnlockTexture(screenTex);
 
